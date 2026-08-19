@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiSend, FiX, FiBell, FiUsers, FiUser, FiLink, FiCheckCircle } from "react-icons/fi";
+import { FiSend, FiX, FiBell, FiUsers, FiUser, FiCheckCircle } from "react-icons/fi";
 import toast from "react-hot-toast";
 
 const PRESET_TITLES = [
@@ -234,22 +234,6 @@ export default function CustomNotificationModal({ isOpen, onClose }) {
               />
             </div>
 
-            {/* Target URL Destination */}
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
-                <FiLink /> Tap Action Destination
-              </label>
-              <select
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              >
-                <option value="/tech/calls">Calls Page (/tech/calls)</option>
-                <option value="/tech/payments">Payments Page (/tech/payments)</option>
-                <option value="/tech">Service Form (/tech)</option>
-                <option value="/tech/profile">Profile (/tech/profile)</option>
-              </select>
-            </div>
 
             {/* Live Preview Card */}
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-1">

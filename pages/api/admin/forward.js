@@ -133,20 +133,32 @@ async function forwardCore(req, res, user) {
           }
         }
 
-        // 2. FCM Push Notification to Assigned Technician
+        // 2. FCM Push Notification to Assigned Technician (Multi-Device Push)
         try {
           const techTokenDocs = await db.collection("fcm_tokens").find({
             $or: [
               { userId: String(tech._id) },
               { userObjectId: tech._id },
               { username: tech.username },
+              { username: tech.name },
+              { username: tech.fullName },
             ],
           }).toArray();
 
-          const tokens = techTokenDocs.map(d => d.token).filter(Boolean);
+          const dbTokens = techTokenDocs.map((d) => d.token).filter(Boolean);
+          const directTokens = Array.isArray(tech.fcmTokens)
+            ? tech.fcmTokens
+            : tech.fcmToken
+            ? [tech.fcmToken]
+            : [];
 
-          if (tokens.length > 0) {
-            for (const token of tokens) {
+          const allTokens = Array.from(new Set([...dbTokens, ...directTokens])).filter(
+            (t) => typeof t === "string" && t.trim().length > 20
+          );
+
+          if (allTokens.length > 0) {
+            console.log(`📱 Dispatching push to ${allTokens.length} device(s) for ${tech.username}`);
+            for (const token of allTokens) {
               await sendNotification(
                 token,
                 "📞 New Call Assigned",
@@ -156,12 +168,13 @@ async function forwardCore(req, res, user) {
                   clientName: insertDoc.clientName,
                   phone: insertDoc.phone,
                   url: "/tech/calls",
+                  click_action: "/tech/calls",
                 },
                 "/tech/calls"
               );
             }
           } else {
-            console.warn("⚠️ No FCM token found for technician:", tech.username);
+            console.warn("⚠️ No active device push token registered for technician:", tech.username);
           }
 
           // 3. Log notification in DB for technician history

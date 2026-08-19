@@ -14,20 +14,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, message: "Missing token" });
     }
 
+    const cleanToken = String(token).trim();
     const client = await clientPromise;
     const db = client.db("mydatabase");
     const collection = db.collection("fcm_tokens");
 
-    // Build flexible query matching token or userId
-    const filter = {};
-    if (userId) {
-      filter.userId = String(userId);
-    } else {
-      filter.token = token;
-    }
-
+    // 1. Upsert token record per device token (supports multiple phones per technician)
     const updateDoc = {
-      token: String(token).trim(),
+      token: cleanToken,
       role: String(role || "technician"),
       updatedAt: new Date(),
     };
@@ -43,14 +37,35 @@ export default async function handler(req, res) {
       updateDoc.username = String(username).trim();
     }
 
-    const result = await collection.updateOne(
-      filter,
-      { $set: updateDoc },
+    await collection.updateOne(
+      { token: cleanToken },
+      {
+        $set: updateDoc,
+        $setOnInsert: { createdAt: new Date() },
+      },
       { upsert: true }
     );
 
-    console.log("✅ FCM Token saved successfully for user:", { userId, username, role });
-    return res.status(200).json({ ok: true, message: "Token saved", result });
+    // 2. Also attach token directly to technician document for instant lookup
+    if (userId || username) {
+      const techFilter = {};
+      if (userId && ObjectId.isValid(userId)) {
+        techFilter._id = new ObjectId(userId);
+      } else if (username) {
+        techFilter.username = String(username).trim();
+      }
+
+      await db.collection("technicians").updateOne(
+        techFilter,
+        {
+          $addToSet: { fcmTokens: cleanToken },
+          $set: { fcmToken: cleanToken, lastActiveAt: new Date() },
+        }
+      ).catch(() => {});
+    }
+
+    console.log("✅ Device Push Token saved for technician:", { userId, username, role });
+    return res.status(200).json({ ok: true, message: "Device push token registered successfully" });
   } catch (error) {
     console.error("❌ Error saving FCM token:", error);
     return res.status(500).json({ ok: false, message: error.message || "Error saving token" });

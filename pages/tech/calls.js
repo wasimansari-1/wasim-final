@@ -28,12 +28,12 @@ import {
   FaTag,
   FaSearch,
 } from "react-icons/fa";
-import { FiX } from "react-icons/fi";
+import { FiX, FiChevronDown } from "react-icons/fi";
 import { collection, query as fsQuery, where, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
 const TABS = [
-  { id: "All Calls", label: "All Calls", icon: FaPhoneAlt },
+  { id: "All Calls", label: "All", icon: FaPhoneAlt },
   { id: "Pending", label: "Pending", icon: FaClock },
   { id: "Closed", label: "Closed", icon: FaCheck },
   { id: "Canceled", label: "Canceled", icon: FaTimes },
@@ -377,26 +377,26 @@ export default function TechCalls() {
 
         {/* Full-Width Professional Search Field */}
         <div className="relative w-full">
-          <FaSearch className="absolute left-3 top-2.5 text-slate-400 text-[11px]" />
+          <FaSearch className="absolute left-3.5 top-3 text-slate-400 text-xs" />
           <input
-            className="w-full bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl pl-8 pr-8 py-1.5 sm:py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 shadow-2xs transition"
-            placeholder="Search by client name, mobile, address..."
+            className="w-full bg-white border border-slate-200/90 rounded-xl pl-9 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 shadow-2xs transition"
+            placeholder="Search customer, mobile number, address..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
             <button
               onClick={() => setQuery("")}
-              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 p-0.5"
+              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 p-0.5"
             >
-              <FiX size={13} />
+              <FiX size={14} />
             </button>
           )}
         </div>
 
-        {/* Fluid Animated Scrolling Tab Bar */}
+        {/* Smooth Horizontal Scrolling Tab Bar (Fits 3+ Tabs with Full Text & Blue Fade Active) */}
         <div className="w-full overflow-x-auto no-scrollbar py-0.5">
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-max px-0.5">
+          <div className="flex items-center gap-1.5 min-w-max px-0.5">
             {TABS.map((t) => {
               const isActive = tab === t.id;
               const Icon = t.icon;
@@ -412,43 +412,27 @@ export default function TechCalls() {
               return (
                 <button
                   key={t.id}
+                  type="button"
                   onClick={() => {
                     setTab(t.id);
-                    vibrate([15]);
+                    vibrate([10]);
                   }}
-                  className={`relative px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 select-none shrink-0 ${
-                    isActive ? "text-white" : "text-slate-600 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs"
+                  className={`py-1.5 px-3 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all duration-150 flex items-center gap-1.5 select-none shrink-0 whitespace-nowrap ${
+                    isActive
+                      ? "bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white shadow-md shadow-blue-500/25 border border-blue-500/40"
+                      : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/90 shadow-2xs"
                   }`}
                 >
-                  {/* Sliding Spring Background Pill */}
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeCallTabPill"
-                      transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                      className={`absolute inset-0 rounded-xl sm:rounded-2xl shadow-md ${
-                        t.id === "Pending"
-                          ? "bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20"
-                          : t.id === "Closed"
-                          ? "bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/20"
-                          : t.id === "Canceled"
-                          ? "bg-slate-700 shadow-slate-700/20"
-                          : "bg-slate-900 shadow-slate-900/20"
-                      }`}
-                    />
-                  )}
-
-                  {/* Tab Label & Icon */}
-                  <span className="relative z-10 flex items-center gap-1">
-                    <Icon size={10} className={isActive ? "text-white" : "text-slate-400"} />
-                    <span className="tracking-tight">{t.label}</span>
-                  </span>
-
-                  {/* Counter Pill */}
+                  <Icon
+                    size={9.5}
+                    className={`shrink-0 ${isActive ? "text-blue-100" : "text-slate-400"}`}
+                  />
+                  <span className="whitespace-nowrap tracking-tight">{t.label}</span>
                   {count > 0 && (
                     <span
-                      className={`relative z-10 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black ${
+                      className={`px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold shrink-0 ${
                         isActive
-                          ? "bg-white/25 text-white"
+                          ? "bg-white/20 text-white"
                           : "bg-slate-100 text-slate-700"
                       }`}
                     >
@@ -461,15 +445,15 @@ export default function TechCalls() {
           </div>
         </div>
 
-        {/* Calls Feed */}
+        {/* Calls Feed (Zero-Lag Instant 0ms Rendering) */}
         {loading ? (
-          <div className="space-y-3 pt-1">
+          <div className="space-y-2.5 pt-1">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="skeleton-shimmer h-40 rounded-3xl" />
+              <div key={i} className="skeleton-shimmer h-36 rounded-2xl" />
             ))}
           </div>
         ) : visibleCalls.length === 0 ? (
-          <div className="bg-white rounded-3xl p-8 text-center border border-slate-200/70 space-y-2 shadow-sm">
+          <div className="bg-white rounded-2xl p-8 text-center border border-slate-200/70 space-y-2 shadow-2xs">
             <div className="h-10 w-10 bg-slate-50 text-slate-400 rounded-2xl grid place-items-center text-lg mx-auto">
               📋
             </div>
@@ -479,18 +463,16 @@ export default function TechCalls() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3 pt-0.5">
-            <AnimatePresence mode="popLayout">
-              {visibleCalls.map((call) => (
-                <PixelPerfectCallCard
-                  key={call._id}
-                  call={call}
-                  onShowDetails={() => setDetailModalCall(call)}
-                  onUpdateStatus={updateStatus}
-                  isUpdating={updatingId === call._id}
-                />
-              ))}
-            </AnimatePresence>
+          <div className="space-y-2.5 pt-0.5">
+            {visibleCalls.map((call) => (
+              <PixelPerfectCallCard
+                key={call._id}
+                call={call}
+                onShowDetails={() => setDetailModalCall(call)}
+                onUpdateStatus={updateStatus}
+                isUpdating={updatingId === call._id}
+              />
+            ))}
           </div>
         )}
       </main>
@@ -696,189 +678,190 @@ export default function TechCalls() {
 // -------------------------------------------------------------
 // 🎴 PIXEL-PERFECT CARD COMPONENT (EYE-FRIENDLY & ROCK-SOLID)
 // -------------------------------------------------------------
-const PixelPerfectCallCard = memo(
-  forwardRef(function PixelPerfectCallCard(
-    { call, onShowDetails, onUpdateStatus, isUpdating },
-    ref
-  ) {
-    const isClosed = call.status === "Closed" || call.status === "Completed";
-    const isCanceled = call.status === "Canceled" || call.status === "Cancelled";
-    const isPending = !isClosed && !isCanceled;
+const PixelPerfectCallCard = memo(function PixelPerfectCallCard({
+  call,
+  onShowDetails,
+  onUpdateStatus,
+  isUpdating,
+}) {
+  const isClosed = call.status === "Closed" || call.status === "Completed";
+  const isCanceled = call.status === "Canceled" || call.status === "Cancelled";
+  const isPending = !isClosed && !isCanceled;
 
-    const cleanPhone = (call.phone || "").replace(/[^0-9]/g, "");
+  const cleanPhone = (call.phone || "").replace(/[^0-9]/g, "");
 
-    const handleNavigate = (e) => {
-      e.stopPropagation();
-      if (!call.address) return toast.error("No address available");
-      const encoded = encodeURIComponent(call.address);
-      window.open(`https://www.google.com/maps/search/?api=1&query=${encoded}`, "_blank");
-    };
+  const handleNavigate = (e) => {
+    e.stopPropagation();
+    if (!call.address) return toast.error("No address available");
+    const encoded = encodeURIComponent(call.address);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encoded}`, "_blank");
+  };
 
-    const handleWhatsApp = (e) => {
-      e.stopPropagation();
-      if (!cleanPhone) return toast.error("No phone number");
-      const phone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-      const msg = encodeURIComponent(
-        `Hello ${call.clientName || "Customer"}, I am your Chimney Solutions technician regarding your service visit.`
-      );
-      window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
-    };
+  const handleWhatsApp = (e) => {
+    e.stopPropagation();
+    if (!cleanPhone) return toast.error("No phone number");
+    const phone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const msg = encodeURIComponent(
+      `Hello ${call.clientName || "Customer"}, I am your Chimney Solutions technician regarding your service visit.`
+    );
+    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+  };
 
-    const chooseRaw = (call.chooseLabel || call.chooseCall || "").toString().toUpperCase();
+  const chooseRaw = (call.chooseLabel || call.chooseCall || "").toString().toUpperCase();
 
-    return (
-      <motion.div
-        ref={ref}
-        layout
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.2 }}
-        className={`rounded-3xl p-3.5 sm:p-4 border transition-all duration-200 space-y-2.5 relative ${
-          isClosed
-            ? "bg-gradient-to-b from-emerald-50/50 via-white to-white border-emerald-200/90 shadow-[0_4px_20px_rgba(16,185,129,0.06)]"
-            : isCanceled
-            ? "bg-gradient-to-b from-slate-100/60 via-white to-white border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] opacity-85"
-            : "bg-gradient-to-b from-rose-50/50 via-white to-white border-rose-200/90 shadow-[0_4px_20px_rgba(244,63,94,0.06)]"
-        }`}
-      >
-        {/* 1. Header Bar: Brand + Status Pill + Price */}
-        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Status Indicator */}
-            {isPending && (
-              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-900 border border-rose-200 text-[10px] font-black flex items-center gap-1.5 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
-                Pending Call
+  return (
+    <div
+      className={`rounded-2xl p-3 border space-y-2 transition-colors relative ${
+        isClosed
+          ? "bg-gradient-to-b from-emerald-50/30 via-white to-white border-emerald-200/70 shadow-2xs"
+          : isCanceled
+          ? "bg-gradient-to-b from-slate-100/40 via-white to-white border-slate-200/70 opacity-80 shadow-2xs"
+          : "bg-gradient-to-b from-rose-50/30 via-white to-white border-rose-200/70 shadow-2xs"
+      }`}
+    >
+      {/* 1. Header Bar: Brand + Status Pill + Price */}
+      <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-100">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Status Indicator with Dynamic Animations */}
+          {isPending && (
+            <span className="relative px-2 py-0.5 rounded-full bg-gradient-to-r from-rose-100 to-pink-100 text-rose-900 border border-rose-200/90 text-[9px] font-extrabold flex items-center gap-1 shadow-2xs">
+              <span className="relative flex h-2 w-2 items-center justify-center">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-600" />
               </span>
-            )}
-
-            {isClosed && (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200 text-[10px] font-black flex items-center gap-1 shadow-sm">
-                <FaCheck size={8} className="text-emerald-700" />
-                Closed
-              </span>
-            )}
-
-            {isCanceled && (
-              <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 border border-slate-300 text-[10px] font-bold">
-                ✕ Canceled
-              </span>
-            )}
-
-            {/* Brand Source */}
-            {chooseRaw && (
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold">
-                {chooseRaw.replace(/_/g, " ")}
-              </span>
-            )}
-          </div>
-
-          <div className="text-right shrink-0">
-            <span className="text-sm sm:text-base font-extrabold text-slate-900">₹{call.price || 0}</span>
-          </div>
-        </div>
-
-        {/* 2. Customer Body (No broken text) */}
-        <div className="space-y-1">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-bold text-sm sm:text-base text-slate-900 leading-snug break-words">
-              {call.clientName || "Customer"}
-            </h3>
-            {call.type && (
-              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md shrink-0">
-                {call.type}
-              </span>
-            )}
-          </div>
-
-          {/* Contact & Address */}
-          <div className="space-y-0.5 pt-0.5">
-            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5 break-all">
-              <FaPhoneAlt size={9} className="text-slate-400 shrink-0" />
-              <span>{call.phone}</span>
-            </div>
-
-            <div className="text-xs text-slate-600 flex items-start gap-1.5 leading-relaxed break-words">
-              <FaMapMarkerAlt size={10} className="text-slate-400 shrink-0 mt-0.5" />
-              <span>{call.address || "Address not specified"}</span>
-            </div>
-          </div>
-
-          {/* Notes */}
-          {call.notes && (
-            <div className="p-2 rounded-xl bg-amber-50/80 border border-amber-200/60 text-[11px] text-amber-950 font-medium leading-snug break-words">
-              <b className="font-bold">Note:</b> {call.notes}
-            </div>
+              <span className="tracking-tight">Pending Call</span>
+            </span>
           )}
 
-          {/* Time Stamp */}
-          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-0.5">
-            <FaClock size={9} />
-            <span>Assigned {timeAgo(call.createdAt)}</span>
-            {call.timeZone && <span>• Slot: {call.timeZone}</span>}
-          </div>
+          {isClosed && (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200 text-[9px] font-extrabold flex items-center gap-1">
+              <FaCheck size={7} className="text-emerald-700" />
+              Closed
+            </span>
+          )}
 
-          {/* Closure Audit Tag if Closed */}
-          {isClosed && call.closedAt && (
-            <div className="p-1.5 rounded-xl bg-emerald-100/60 text-emerald-900 text-[10px] font-bold flex items-center gap-1.5 border border-emerald-200">
-              <FaCheck size={9} className="text-emerald-700" />
-              <span>Closed on {formatFullDate(call.closedAt)}</span>
-            </div>
+          {isCanceled && (
+            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 border border-slate-300 text-[9px] font-bold">
+              ✕ Canceled
+            </span>
+          )}
+
+          {/* Brand Source */}
+          {chooseRaw && (
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[8.5px] font-bold uppercase tracking-wider">
+              {chooseRaw.replace(/_/g, " ")}
+            </span>
           )}
         </div>
 
-        {/* 3. 100% Solid Action Buttons Grid (Call, Maps, WhatsApp, Details) */}
-        <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100">
-          {/* 📞 Direct Call */}
-          <a
-            href={`tel:${cleanPhone}`}
-            className="flex items-center justify-center gap-1 py-2 px-1 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 text-xs font-bold rounded-xl transition text-center"
-            title="Direct Phone Call"
-          >
-            <FaPhoneAlt size={9} />
-            <span>Call</span>
-          </a>
+        <div className="text-right shrink-0">
+          <span className="text-xs font-black text-slate-900 bg-slate-100/90 px-2 py-0.5 rounded-md">
+            ₹{call.price || 0}
+          </span>
+        </div>
+      </div>
 
-          {/* 🗺️ Google Maps */}
-          <button
-            type="button"
-            onClick={handleNavigate}
-            className="flex items-center justify-center gap-1 py-2 px-1 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-700 text-xs font-bold rounded-xl transition text-center"
-            title="Open Location in Google Maps"
-          >
-            <FaDirections size={10} />
-            <span>Map</span>
-          </button>
-
-          {/* 💬 WhatsApp */}
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            className="flex items-center justify-center gap-1 py-2 px-1 bg-[#25D366]/10 hover:bg-[#25D366]/20 active:scale-95 text-[#128C7E] text-xs font-bold rounded-xl transition text-center"
-            title="Open WhatsApp Chat"
-          >
-            <FaWhatsapp size={11} className="text-[#25D366]" />
-            <span>Chat</span>
-          </button>
-
-          {/* 👁️ View All Details */}
-          <button
-            type="button"
-            onClick={onShowDetails}
-            className="flex items-center justify-center gap-1 py-2 px-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-bold rounded-xl transition text-center"
-            title="View Full Call Details"
-          >
-            <FaEye size={10} />
-            <span>Details</span>
-          </button>
+      {/* 2. Customer Body */}
+      <div className="space-y-1">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight break-words tracking-tight">
+            {call.clientName || "Customer"}
+          </h3>
+          {call.type && (
+            <span className="text-[9.5px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded shrink-0">
+              {call.type}
+            </span>
+          )}
         </div>
 
-        {/* 4. Full Status Selector & Quick Action Strip */}
-        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
-          {/* Status Dropdown Selector */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400">Status:</span>
+        {/* Contact & Address */}
+        <div className="space-y-0.5 pt-0.5 text-[10.5px]">
+          <div className="font-semibold text-slate-800 flex items-center gap-1.5 break-all">
+            <FaPhoneAlt size={8} className="text-slate-400 shrink-0" />
+            <span>{call.phone}</span>
+          </div>
+
+          <div className="text-slate-600 flex items-start gap-1.5 leading-snug break-words">
+            <FaMapMarkerAlt size={8.5} className="text-slate-400 shrink-0 mt-0.5" />
+            <span>{call.address || "Address not specified"}</span>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {call.notes && (
+          <div className="p-1.5 rounded-lg bg-amber-50/80 border border-amber-200/50 text-[10px] text-amber-950 font-medium leading-snug break-words">
+            <b className="font-bold">Note:</b> {call.notes}
+          </div>
+        )}
+
+        {/* Time Stamp */}
+        <div className="text-[9px] text-slate-400 flex items-center gap-1 pt-0.5 font-medium">
+          <FaClock size={8} />
+          <span>Assigned {timeAgo(call.createdAt)}</span>
+          {call.timeZone && <span>• Slot: {call.timeZone}</span>}
+        </div>
+
+        {/* Closure Audit Tag if Closed */}
+        {isClosed && call.closedAt && (
+          <div className="p-1 rounded-lg bg-emerald-100/50 text-emerald-900 text-[9px] font-bold flex items-center gap-1 border border-emerald-200/60">
+            <FaCheck size={7.5} className="text-emerald-700" />
+            <span>Closed on {formatFullDate(call.closedAt)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Action Buttons Grid (Call, Maps, WhatsApp, Details) */}
+      <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100">
+        {/* 📞 Direct Call */}
+        <a
+          href={`tel:${cleanPhone}`}
+          className="flex items-center justify-center gap-1 py-1 px-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-[10.5px] font-semibold rounded-lg border border-slate-200 shadow-2xs transition text-center"
+          title="Direct Phone Call"
+        >
+          <FaPhoneAlt size={8.5} className="text-emerald-600 shrink-0" />
+          <span>Call</span>
+        </a>
+
+        {/* 🗺️ Google Maps */}
+        <button
+          type="button"
+          onClick={handleNavigate}
+          className="flex items-center justify-center gap-1 py-1 px-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-[10.5px] font-semibold rounded-lg border border-slate-200 shadow-2xs transition text-center"
+          title="Open Location in Google Maps"
+        >
+          <FaDirections size={9.5} className="text-blue-600 shrink-0" />
+          <span>Map</span>
+        </button>
+
+        {/* 💬 WhatsApp */}
+        <button
+          type="button"
+          onClick={handleWhatsApp}
+          className="flex items-center justify-center gap-1 py-1 px-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-[10.5px] font-semibold rounded-lg border border-slate-200 shadow-2xs transition text-center"
+          title="Open WhatsApp Chat"
+        >
+          <FaWhatsapp size={9.5} className="text-[#25D366] shrink-0" />
+          <span>Chat</span>
+        </button>
+
+        {/* 👁️ View All Details */}
+        <button
+          type="button"
+          onClick={onShowDetails}
+          className="flex items-center justify-center gap-1 py-1 px-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-[10.5px] font-semibold rounded-lg border border-slate-200 shadow-2xs transition text-center"
+          title="View Full Call Details"
+        >
+          <FaEye size={9} className="text-slate-500 shrink-0" />
+          <span>Details</span>
+        </button>
+      </div>
+
+      {/* 4. Status Selector & Quick Action Strip (Compact & Responsive) */}
+      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
+        {/* Status Dropdown Selector with Option Chevron Icon */}
+        <div className="flex items-center gap-1 shrink-0 min-w-0">
+          <span className="text-[8.5px] sm:text-[9px] font-bold text-slate-400 tracking-wider uppercase shrink-0">STATUS:</span>
+          <div className="relative inline-flex items-center shrink-0">
             <select
               value={isClosed ? "Closed" : isCanceled ? "Canceled" : "Pending"}
               disabled={isUpdating}
@@ -887,44 +870,68 @@ const PixelPerfectCallCard = memo(
                 if (val === "Canceled" && !confirm("Are you sure you want to cancel this call?")) return;
                 onUpdateStatus(call._id, val);
               }}
-              className={`text-[11px] font-bold py-1 px-2 rounded-xl border transition-all cursor-pointer focus:outline-none ${
+              className={`appearance-none text-[9.5px] sm:text-[10px] font-bold py-0.5 pl-2 pr-5 rounded-md border transition-all cursor-pointer focus:outline-none shadow-2xs whitespace-nowrap ${
                 isClosed
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70"
                   : isCanceled
-                  ? "bg-slate-100 text-slate-700 border-slate-300"
-                  : "bg-rose-50 text-rose-800 border-rose-200"
+                  ? "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200/70"
+                  : "bg-gradient-to-r from-rose-50 via-pink-50 to-rose-100/80 text-rose-900 border-rose-300/90 hover:from-rose-100 hover:to-pink-100 shadow-2xs shadow-rose-500/10"
               }`}
             >
               <option value="Pending">● Pending</option>
               <option value="Closed">✓ Closed</option>
               <option value="Canceled">✕ Canceled</option>
             </select>
-          </div>
-
-          {/* Quick 1-Tap Action Button */}
-          <div className="flex items-center gap-1">
-            {!isClosed ? (
-              <button
-                type="button"
-                disabled={isUpdating}
-                onClick={() => onUpdateStatus(call._id, "Closed")}
-                className="py-1 px-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-bold rounded-xl shadow-sm transition flex items-center gap-1"
-              >
-                <FaCheck size={8} /> Close Call
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isUpdating}
-                onClick={() => onUpdateStatus(call._id, "Pending")}
-                className="py-1 px-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[10px] font-bold rounded-xl border border-slate-200 transition"
-              >
-                Reopen
-              </button>
-            )}
+            <FiChevronDown
+              size={9.5}
+              className={`absolute right-1 pointer-events-none ${
+                isClosed ? "text-emerald-700" : isCanceled ? "text-slate-500" : "text-rose-700"
+              }`}
+            />
           </div>
         </div>
-      </motion.div>
-    );
-  })
-);
+
+        {/* Quick 1-Tap Action Button (Compact with Smooth Pulse & Shine Animation) */}
+        <div className="shrink-0">
+          {!isClosed ? (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => onUpdateStatus(call._id, "Closed")}
+              className="relative overflow-hidden group py-0.5 px-2 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white text-[9.5px] sm:text-[10px] font-bold rounded-md shadow-2xs shadow-emerald-600/30 transition-all duration-200 flex items-center gap-1 whitespace-nowrap shrink-0"
+            >
+              {/* Subtle Shine Animation */}
+              <span className="absolute inset-0 w-full h-full bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out pointer-events-none" />
+
+              {isUpdating ? (
+                <>
+                  <FaSyncAlt size={7.5} className="animate-spin text-white shrink-0" />
+                  <span className="shrink-0">Closing...</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-white animate-pulse shrink-0" />
+                  <FaCheck size={7} className="text-white shrink-0" />
+                  <span className="shrink-0">Close Call</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => onUpdateStatus(call._id, "Pending")}
+              className="py-0.5 px-1.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[9px] sm:text-[9.5px] font-bold rounded-md border border-slate-200 transition-all whitespace-nowrap shrink-0 flex items-center gap-1"
+            >
+              {isUpdating ? (
+                <FaSyncAlt size={7} className="animate-spin text-slate-500 shrink-0" />
+              ) : (
+                <span className="shrink-0">Reopen</span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
