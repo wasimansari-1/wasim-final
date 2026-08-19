@@ -27,11 +27,15 @@ body {
 /* 📱 CRITICAL: Zero auto-zoom on iPhone / iOS Safari */
 input,
 select,
-textarea,
-button {
+textarea {
   font-size: 16px !important;
   touch-action: manipulation;
   -webkit-appearance: none;
+}
+
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media screen and (max-width: 768px) {
