@@ -4,8 +4,7 @@ import { ObjectId } from "mongodb";
 
 /**
  * Returns forwarded calls for the logged-in technician.
- * Each item includes paymentStatus: "Paid" | "Pending"
- * Now also returns chooseCall (raw) and chooseLabel (human-friendly).
+ * Each item includes all forwarded call fields, closure metadata, paymentStatus.
  */
 
 function normalizeForKey(s = "") {
@@ -26,7 +25,7 @@ async function handler(req, res, user) {
   try {
     let { tab = "All Calls", page = 1, pageSize } = req.query;
     page = parseInt(page, 10) || 1;
-    pageSize = parseInt(pageSize, 10) || 10;
+    pageSize = parseInt(pageSize, 10) || 50;
 
     const ALLOWED_TABS = new Set(["All Calls", "Today Calls", "Pending", "Closed", "Canceled"]);
     if (!ALLOWED_TABS.has(tab)) tab = "All Calls";
@@ -46,18 +45,16 @@ async function handler(req, res, user) {
       match.createdAt = { $gte: start };
       match.status = { $ne: "Canceled" };
     } else if (tab === "Pending") {
-      match.status = "Pending";
+      match.status = { $in: ["Pending", "In Process"] };
     } else if (tab === "Closed") {
-      match.status = "Closed";
+      match.status = { $in: ["Closed", "Completed"] };
     } else if (tab === "Canceled") {
-      match.status = "Canceled";
-    } else {
-      match.status = { $ne: "Canceled" };
+      match.status = { $in: ["Canceled", "Cancelled"] };
     }
 
     const skip = (page - 1) * pageSize;
 
-    // fetch forwarded calls slice (request pageSize + 1 to detect hasMore)
+    // Fetch forwarded calls slice
     const docs = await forwardedColl
       .find(match)
       .sort({ createdAt: -1 })
@@ -75,13 +72,18 @@ async function handler(req, res, user) {
         addr: 1,
         location: 1,
         type: 1,
+        serviceType: 1,
         price: 1,
         status: 1,
         createdAt: 1,
+        updatedAt: 1,
+        closedAt: 1,
+        closedBy: 1,
+        closedByName: 1,
         timeZone: 1,
         notes: 1,
         paymentStatus: 1,
-        chooseCall: 1, // <-- NEW: include chooseCall in projection
+        chooseCall: 1,
         techName: 1,
       })
       .toArray();
@@ -89,19 +91,15 @@ async function handler(req, res, user) {
     const hasMore = docs.length > pageSize;
     const slice = docs.slice(0, pageSize);
 
-    // Build arrays to query payments efficiently
-    const callIdsAll = slice.map((c) => String(c._id));
-    const pricesSet = Array.from(new Set(slice.map((c) => Number(c.price || 0))));
-
-    // If no calls, return fast
     if (slice.length === 0) {
       res.setHeader("Cache-Control", "private, no-store");
       return res.status(200).json({ success: true, items: [], page, pageSize, hasMore });
     }
 
-    // Optimized payments query:
-    //  - payments that reference these callIds OR
-    //  - payments by this tech that have calls with matching price (narrow down)
+    // Build arrays to query payments efficiently
+    const callIdsAll = slice.map((c) => String(c._id));
+    const pricesSet = Array.from(new Set(slice.map((c) => Number(c.price || 0))));
+
     const paymentsQuery = {
       $or: [
         { "calls.callId": { $in: callIdsAll } },
@@ -109,42 +107,38 @@ async function handler(req, res, user) {
       ],
     };
 
-    // Only fetch calls array to keep payload small
-    const payments = await paymentsColl.find(paymentsQuery).project({ calls: 1 }).toArray();
+    const payments = await paymentsColl.find(paymentsQuery).project({ calls: 1, mode: 1, receiver: 1, createdAt: 1 }).toArray();
 
-    // Build sets
-    const paidByCallId = new Set();
-    const paidKeyWithPrice = new Set(); // key: normalizedName|phone|address|price
+    const paidByCallId = new Map();
+    const paidKeyWithPrice = new Map();
 
     for (const pay of payments) {
       if (!pay || !Array.isArray(pay.calls)) continue;
       for (const pc of pay.calls) {
         if (!pc) continue;
-        if (pc.callId) paidByCallId.add(String(pc.callId));
+        const callAmt = Number(pc.onlineAmount || 0) + Number(pc.cashAmount || 0) || Number(pc.price || 0);
+        if (pc.callId) paidByCallId.set(String(pc.callId), { paidAmount: callAmt, mode: pay.mode, receiver: pay.receiver });
         const name = normalizeForKey(pc.clientName || pc.name || "");
         const phone = normalizePhone(pc.phone || pc.mobile || pc.contact || "");
         const address = normalizeForKey(pc.address || pc.addr || pc.location || "");
         const price = Number(pc.price || pc.amount || pc.total || 0);
         if (name || phone || address || price) {
           const key = `${name}|${phone}|${address}|${price}`;
-          paidKeyWithPrice.add(key);
+          paidKeyWithPrice.set(key, { paidAmount: callAmt, mode: pay.mode, receiver: pay.receiver });
         }
       }
     }
 
-    // Map final items with paymentStatus determined by sets (callId OR key+price match)
     const items = slice.map((i) => {
       const clientName = i.clientName ?? i.customerName ?? i.name ?? i.fullName ?? "Unknown";
       const phone = i.phone ?? i.mobile ?? i.contact ?? "";
       const address = i.address ?? i.addr ?? i.location ?? "";
       const price = Number(i.price || 0);
       const key = `${normalizeForKey(clientName)}|${normalizePhone(phone)}|${normalizeForKey(address)}|${price}`;
-      const isPaid =
-        paidByCallId.has(String(i._id)) ||
-        paidKeyWithPrice.has(key) ||
-        (i.paymentStatus && String(i.paymentStatus).toLowerCase().includes("paid"));
 
-      // chooseCall raw + human friendly label
+      const matchedPay = paidByCallId.get(String(i._id)) || paidKeyWithPrice.get(key) || null;
+      const isPaid = Boolean(matchedPay) || (i.paymentStatus && String(i.paymentStatus).toLowerCase().includes("paid"));
+
       const chooseRaw = i.chooseCall ?? "";
       const chooseLabel =
         String(chooseRaw || "")
@@ -157,15 +151,21 @@ async function handler(req, res, user) {
         clientName,
         phone,
         address,
-        type: i.type ?? "",
+        type: i.type || i.serviceType || "Service Job",
         price,
         status: i.status ?? "Pending",
         createdAt: i.createdAt ?? "",
+        updatedAt: i.updatedAt ?? "",
+        closedAt: i.closedAt ?? null,
+        closedByName: i.closedByName || i.techName || "",
         timeZone: i.timeZone ?? "",
         notes: i.notes ?? "",
         paymentStatus: isPaid ? "Paid" : "Pending",
-        chooseCall: chooseRaw,      // raw value (e.g., CHIMNEY_SOLUTIONS)
-        chooseLabel,               // human label (e.g., "CHIMNEY SOLUTIONS")
+        paidAmount: matchedPay?.paidAmount || 0,
+        paymentMode: matchedPay?.mode || "",
+        receiver: matchedPay?.receiver || "",
+        chooseCall: chooseRaw,
+        chooseLabel,
         techName: i.techName ?? "",
       };
     });

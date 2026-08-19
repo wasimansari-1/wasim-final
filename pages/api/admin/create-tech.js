@@ -1,16 +1,34 @@
-
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import bcrypt from "bcryptjs";
 
-async function handler(req,res,user){
-  if(req.method!=='POST') return res.status(405).end();
-  const { username, password } = req.body||{};
-  if(!username || !password) return res.status(400).json({ error:'Missing' });
+async function handler(req, res, user) {
+  if (req.method !== "POST") return res.status(405).end();
+  const { username, password, phone = "", name = "" } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password are required" });
+  }
+
+  const cleanUsername = String(username).trim();
   const db = await getDb();
-  const exists = await db.collection('technicians').findOne({ username });
-  if(exists) return res.status(400).json({ error:'Username already exists' });
+
+  const exists = await db.collection("technicians").findOne({ username: cleanUsername });
+  if (exists) {
+    return res.status(400).json({ error: "Technician username already exists" });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
-  const r = await db.collection('technicians').insertOne({ username, passwordHash, createdAt: new Date() });
-  res.json({ ok:true, id: r.insertedId.toString() });
+  const insertDoc = {
+    username: cleanUsername,
+    name: String(name || cleanUsername).trim(),
+    phone: String(phone || "").trim(),
+    passwordHash,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const r = await db.collection("technicians").insertOne(insertDoc);
+  return res.json({ ok: true, id: r.insertedId.toString(), message: "Technician created successfully" });
 }
-export default requireRole('admin')(handler);
+
+export default requireRole("admin")(handler);

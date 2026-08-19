@@ -22,7 +22,6 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  // ✅ अगर seed करते वक्त field का नाम "password" रखा है तो उसी का use करो
   const ok = await bcrypt.compare(password, tech.password || tech.passwordHash);
   if (!ok) {
     return res.status(401).json({ error: "Invalid credentials" });
@@ -30,7 +29,7 @@ export default async function handler(req, res) {
 
   const token = signToken({
     role: "technician",
-    username,
+    username: tech.username,
     id: tech._id.toString(),
   });
 
@@ -45,5 +44,12 @@ export default async function handler(req, res) {
     })
   );
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    user: {
+      id: tech._id.toString(),
+      username: tech.username,
+      role: "technician",
+    },
+  });
 }

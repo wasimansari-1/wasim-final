@@ -1,8 +1,7 @@
 export const runtime = 'nodejs';
 
 import { ObjectId } from 'mongodb';
-import { getDb } from '../../../lib/api-helpers.js';
-import { requireRole } from '../../../lib/api-helpers.js';
+import { getDb, requireRole } from '../../../lib/api-helpers.js';
 
 function toObjIdIfPossible(id) {
   try {
@@ -20,7 +19,7 @@ async function handler(req, res, user) {
     const techsColl = db.collection('technicians');
     const paymentsColl = db.collection('payments');
 
-    let { month = '', techId = '', dateFrom = '', dateTo = '' } = req.query;
+    let { month = '', techId = '', dateFrom = '', dateTo = '', status = '' } = req.query;
 
     // compute date range (dateFrom/dateTo override month)
     let start, end;
@@ -41,7 +40,7 @@ async function handler(req, res, user) {
 
     // tech filter (support string/ObjectId)
     const techCandidates = [];
-    if (techId && typeof techId === 'string') {
+    if (techId && techId !== 'all' && typeof techId === 'string') {
       techCandidates.push(techId);
       const maybeObj = toObjIdIfPossible(techId);
       if (maybeObj && typeof maybeObj !== 'string') techCandidates.push(maybeObj);
@@ -83,7 +82,6 @@ async function handler(req, res, user) {
     lifeStatsArr.forEach(r => lifeMap.set(String(r._id), { totalClosed: r.totalClosed || 0, totalAmount: r.totalAmount || 0 }));
 
     // ----- payments aggregated by tech in the same payment period (submitted amounts) -----
-    // we flatten payments.calls and sum online+cash per tech
     const paymentsByTechArr = await paymentsColl.aggregate([
       { $match: { createdAt: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
       { $unwind: { path: '$calls', preserveNullAndEmptyArrays: false } },
@@ -99,21 +97,19 @@ async function handler(req, res, user) {
     const paymentsMap = new Map();
     paymentsByTechArr.forEach(r => paymentsMap.set(String(r._id), r.submittedSum || 0));
 
-    // ----- technicians list (include alternate name fields) -----
+    // ----- technicians list -----
     const techDocs = await techsColl.find({}, { projection: { _id: 1, name: 1, fullName: 1, techName: 1, username: 1, phone: 1, avatar: 1, profilePic: 1, bio: 1 } }).sort({ name: 1 }).toArray();
 
-    // total submitted across all techs (this month)
     let canonicalMonthSubmittedTotal = 0;
 
     const technicians = techDocs.map(t => {
       const key = String(t._id);
       const monthCallStat = monthMap.get(key) || { monthClosed: 0, monthAmountByPrice: 0 };
       const lifeStat = lifeMap.get(key) || { totalClosed: 0, totalAmount: 0 };
-      const monthSubmitted = paymentsMap.get(key) || 0; // WHAT was actually submitted this month for this tech
+      const monthSubmitted = paymentsMap.get(key) || 0;
 
       canonicalMonthSubmittedTotal += monthSubmitted;
 
-      // choose best display name from available fields
       const displayName = (t.name && t.name.trim()) ||
         (t.fullName && t.fullName.trim()) ||
         (t.techName && t.techName.trim()) ||
@@ -127,183 +123,121 @@ async function handler(req, res, user) {
         phone: t.phone || '',
         avatar: t.avatar || t.profilePic || null,
         bio: t.bio || '',
-        // calls-based metrics
         monthClosed: monthCallStat.monthClosed,
-        monthAmountByPrice: monthCallStat.monthAmountByPrice, // for reference if you want price-based canonical closed amount
+        monthAmountByPrice: monthCallStat.monthAmountByPrice,
         totalClosed: lifeStat.totalClosed,
         totalAmount: lifeStat.totalAmount,
-        // payment-submitted metrics (what you asked: month total = sum of submitted amounts)
         monthSubmitted: monthSubmitted,
-        monthAmount: monthSubmitted // <= user requested: per-tech month amount = submitted amount
+        monthAmount: monthSubmitted,
       };
     });
 
-    // ----- calls list (only when tech filter provided) - matchedPayments included -----
-    let callsList = [];
+    // ----- calls list (fetch calls with closure details for both specific tech and ALL techs) -----
+    const callsMatchFilter = { closedDate: { $gte: start, $lt: end } };
     if (techCandidates.length) {
-      const callsPipeline = [
-        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] }, callIdStr: { $toString: '$_id' } } },
-        { $match: { techId: { $in: techCandidates }, closedDate: { $gte: start, $lt: end } } },
-        { $sort: { closedDate: -1 } },
+      callsMatchFilter.techId = { $in: techCandidates };
+    }
+    if (status && status !== 'all') {
+      callsMatchFilter.status = status;
+    }
 
-        {
-          $lookup: {
-            from: 'payments',
-            let: { callIdStr: '$callIdStr' },
-            pipeline: [
-              { $match: { createdAt: { $gte: start, $lt: end } } },
-              { $project: { _id: 1, createdAt: 1, mode: 1, receiver: 1, calls: 1 } }
-            ],
-            as: 'paymentDocs'
-          }
-        },
+    const callsPipeline = [
+      {
+        $addFields: {
+          closedDate: { $ifNull: ['$closedAt', '$createdAt'] },
+          priceNum: { $ifNull: ['$price', 0] },
+          callIdStr: { $toString: '$_id' },
+          techIdStr: { $toString: '$techId' },
+        }
+      },
+      { $match: callsMatchFilter },
+      { $sort: { closedDate: -1 } },
 
-        {
-          $project: {
-            _id: { $toString: '$_id' },
-            techId: { $toString: '$techId' },
-            clientName: 1,
-            customerName: 1,
-            phone: 1,
-            address: 1,
-            status: 1,
-            price: '$priceNum',
-            createdAt: 1,
-            closedAt: 1,
-            matchedPayments: {
-              $reduce: {
-                input: '$paymentDocs',
-                initialValue: [],
-                in: {
-                  $concatArrays: [
-                    '$$value',
-                    {
-                      $map: {
-                        input: {
-                          $filter: {
-                            input: { $ifNull: ['$$this.calls', []] },
-                            as: 'pc',
-                            cond: { $eq: [{ $toString: '$$pc.callId' }, '$callIdStr'] }
-                          }
-                        },
-                        as: 'mc',
-                        in: {
-                          paymentId: { $toString: '$$this._id' },
-                          paymentCreatedAt: '$$this.createdAt',
-                          onlineAmount: { $ifNull: ['$$mc.onlineAmount', 0] },
-                          cashAmount: { $ifNull: ['$$mc.cashAmount', 0] },
-                          receiver: '$$this.receiver',
-                          mode: '$$this.mode'
+      {
+        $lookup: {
+          from: 'payments',
+          let: { callIdStr: '$callIdStr' },
+          pipeline: [
+            { $match: { createdAt: { $gte: start, $lt: end } } },
+            { $project: { _id: 1, createdAt: 1, mode: 1, receiver: 1, calls: 1 } }
+          ],
+          as: 'paymentDocs'
+        }
+      },
+
+      {
+        $project: {
+          _id: '$callIdStr',
+          techId: '$techIdStr',
+          techName: 1,
+          clientName: 1,
+          customerName: 1,
+          phone: 1,
+          address: 1,
+          type: 1,
+          status: 1,
+          price: '$priceNum',
+          createdAt: 1,
+          closedAt: 1,
+          closedByName: 1,
+          notes: 1,
+          chooseCall: 1,
+          matchedPayments: {
+            $reduce: {
+              input: '$paymentDocs',
+              initialValue: [],
+              in: {
+                $concatArrays: [
+                  '$$value',
+                  {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: { $ifNull: ['$$this.calls', []] },
+                          as: 'pc',
+                          cond: { $eq: [{ $toString: '$$pc.callId' }, '$callIdStr'] }
                         }
+                      },
+                      as: 'mc',
+                      in: {
+                        paymentId: { $toString: '$$this._id' },
+                        paymentCreatedAt: '$$this.createdAt',
+                        onlineAmount: { $ifNull: ['$$mc.onlineAmount', 0] },
+                        cashAmount: { $ifNull: ['$$mc.cashAmount', 0] },
+                        receiver: '$$this.receiver',
+                        mode: '$$this.mode'
                       }
                     }
-                  ]
-                }
+                  }
+                ]
               }
             }
           }
-        },
-
-        {
-          $addFields: {
-            submittedAmount: {
-              $reduce: {
-                input: '$matchedPayments',
-                initialValue: 0,
-                in: { $add: ['$$value', { $add: ['$$this.onlineAmount', '$$this.cashAmount'] }] }
-              }
-            },
-            lastPaymentAt: { $max: '$matchedPayments.paymentCreatedAt' }
-          }
-        },
-
-        {
-          $project: {
-            _id: 1,
-            techId: 1,
-            clientName: 1,
-            customerName: 1,
-            phone: 1,
-            address: 1,
-            status: 1,
-            price: 1,
-            createdAt: 1,
-            closedAt: 1,
-            submittedAmount: 1,
-            matchedPayments: 1,
-            paymentStatus: { $cond: [{ $gt: ['$submittedAmount', 0] }, 'Submitted', 'Unsubmitted'] },
-            lastPaymentAt: 1,
-            clientAvatar: { $ifNull: ['$clientAvatar', '$avatar'] }
-          }
-        },
-
-        { $limit: 500 }
-      ];
-
-      callsList = await callsColl.aggregate(callsPipeline).toArray();
-    }
-
-    // ----- flattened payments (for reconciliation) -----
-    const paymentsPipeline = [
-      { $match: { createdAt: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $project: { _id: 1, createdAt: 1, mode: 1, receiver: 1, techId: 1, calls: { $ifNull: ['$calls', []] } } },
-      { $unwind: '$calls' },
-      { $addFields: { callIdStr: { $toString: '$calls.callId' }, paymentIdStr: { $toString: '$_id' } } },
-      {
-        $project: {
-          paymentId: '$paymentIdStr',
-          paymentCreatedAt: 1,
-          mode: 1,
-          receiver: 1,
-          techId: { $toString: '$techId' },
-          onlineAmount: { $ifNull: ['$calls.onlineAmount', 0] },
-          cashAmount: { $ifNull: ['$calls.cashAmount', 0] },
-          callId: '$callIdStr',
-          clientName: '$calls.clientName',
-          phone: '$calls.phone',
-          address: '$calls.address'
         }
       },
+
       {
-        $lookup: {
-          from: 'forwarded_calls',
-          let: { cid: '$callId' },
-          pipeline: [
-            { $addFields: { idStr: { $toString: '$_id' } } },
-            { $match: { $expr: { $eq: ['$idStr', '$$cid'] } } },
-            { $project: { _id: 1, closedAt: 1, status: 1, price: 1 } }
-          ],
-          as: 'callDoc'
+        $addFields: {
+          submittedAmount: {
+            $reduce: {
+              input: '$matchedPayments',
+              initialValue: 0,
+              in: { $add: ['$$value', { $add: ['$$this.onlineAmount', '$$this.cashAmount'] }] }
+            }
+          },
+          lastPaymentAt: { $max: '$matchedPayments.paymentCreatedAt' }
         }
       },
-      { $addFields: { callDoc: { $arrayElemAt: ['$callDoc', 0] } } },
-      {
-        $project: {
-          paymentId: 1,
-          paymentCreatedAt: 1,
-          mode: 1,
-          receiver: 1,
-          techId: 1,
-          onlineAmount: 1,
-          cashAmount: 1,
-          totalAmount: { $add: ['$onlineAmount', '$cashAmount'] },
-          callId: 1,
-          clientName: 1,
-          callClosedAt: '$callDoc.closedAt',
-          callStatus: '$callDoc.status'
-        }
-      },
-      { $sort: { paymentCreatedAt: -1 } },
-      { $limit: 2000 }
+
+      { $limit: 1000 }
     ];
 
-    const paymentsList = await paymentsColl.aggregate(paymentsPipeline).toArray();
+    const callsList = await callsColl.aggregate(callsPipeline).toArray();
 
-    // canonical summary: monthAmount = sum of submitted payments across techs (user requirement)
+    // canonical summary
     const summary = {
       monthClosed: monthByStatus['Closed']?.count || 0,
-      monthAmount: canonicalMonthSubmittedTotal || 0, // THIS MONTH money = submitted sums across techs
-      monthSubmitted: paymentsList.reduce((s, p) => s + (p.totalAmount || 0), 0),
+      monthAmount: canonicalMonthSubmittedTotal || 0,
       monthPending: monthByStatus['Pending']?.count || 0,
       monthPendingAmount: monthByStatus['Pending']?.amount || 0,
       totalClosed: lifetimeSummary.totalClosed || 0,
@@ -311,7 +245,13 @@ async function handler(req, res, user) {
     };
 
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.status(200).json({ success: true, technicians, summary, calls: callsList, payments: paymentsList, monthSummaryByStatus: monthByStatus });
+    return res.status(200).json({
+      success: true,
+      technicians,
+      summary,
+      calls: callsList,
+      monthSummaryByStatus: monthByStatus
+    });
   } catch (err) {
     console.error('technician-calls error:', err);
     return res.status(500).json({ success: false, error: 'Internal Server Error' });

@@ -1,36 +1,59 @@
-// /components/NotificationInit.js
+// components/NotificationInit.js
 import { useEffect } from "react";
-import { messaging, getToken, onMessage } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
-export default function NotificationInit({ userId }) {
+export default function NotificationInit({ userId, username, role = "technician" }) {
   useEffect(() => {
-    if (!messaging) return;
+    if (typeof window === "undefined" || !"Notification" in window) return;
 
-    Notification.requestPermission().then(async (permission) => {
-      if (permission === "granted") {
-        const token = await getToken(messaging, {
-          vapidKey: "BNQGS7VCHzRbEZi5xMvzVFIlsGr6aFtkEtEbaK43x39Y8vLT-wexc738Y-AlycYmKBasGrxTcP6udOSymXUHZKg"
-        });
+    let cancelled = false;
 
-        if (token) {
-          console.log("FCM Token:", token);
+    (async () => {
+      try {
+        const { getMessaging, getToken, onMessage, isSupported } = await import("firebase/messaging");
+        const { app } = await import("../lib/firebase");
 
-          // Save token in DB for user
-          await fetch("/api/save-fcm-token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, token }),
+        const supported = await isSupported();
+        if (!supported) return;
+
+        const messaging = getMessaging(app);
+        const permission = await Notification.requestPermission();
+
+        if (permission === "granted" && !cancelled) {
+          const token = await getToken(messaging, {
+            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "BNQGS7VCHzRbEZi5xMvzVFIlsGr6aFtkEtEbaK43x39Y8vLT-wexc738Y-AlycYmKBasGrxTcP6udOSymXUHZKg",
           });
-        }
-      }
-    });
 
-    onMessage(messaging, (payload) => {
-      console.log("Message received:", payload);
-      toast.success(payload.notification.title + " - " + payload.notification.body);
-    });
-  }, [userId]);
+          if (token && !cancelled) {
+            const uid = userId || localStorage.getItem("userId");
+            await fetch("/api/save-fcm-token", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                token,
+                userId: uid,
+                username: username || localStorage.getItem("username"),
+                role,
+              }),
+            });
+          }
+        }
+
+        onMessage(messaging, (payload) => {
+          if (cancelled) return;
+          const title = payload?.notification?.title || payload?.data?.title || "Notification";
+          const body = payload?.notification?.body || payload?.data?.body || "";
+          toast.success(`${title}: ${body}`);
+        });
+      } catch (err) {
+        console.warn("NotificationInit error:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, username, role]);
 
   return null;
 }

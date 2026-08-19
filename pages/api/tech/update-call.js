@@ -1,4 +1,4 @@
-// pages/api/forwarded-calls/update-status.js
+// pages/api/tech/update-call.js
 import fetch from "node-fetch";
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
@@ -9,7 +9,7 @@ export const config = {
   },
 };
 
-// Allowed status (⚠️ Cancel को भी allow किया)
+// Allowed status values
 const ALLOWED = new Set(["Pending", "Completed", "Closed", "Canceled"]);
 
 // -------- WhatsApp Completion Message --------
@@ -23,7 +23,7 @@ async function sendCompletionMessage(phone, clientName, serviceType, techName) {
       "28b55ddd7e798fc7b49725ecec55bfd25bcc605d2a2267536a2d39598b4f54b2";
 
     const payload = {
-      template_name: "service_completed", // ensure this exists in WappBiz
+      template_name: "service_completed",
       phone: phone,
       name: clientName,
       parameters: `${clientName}, ${serviceType}, ${techName}`,
@@ -35,7 +35,6 @@ async function sendCompletionMessage(phone, clientName, serviceType, techName) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      // no await for response body heavy parsing here in caller; keep simple
     });
 
     const result = await response.json().catch(() => ({ ok: false }));
@@ -43,7 +42,6 @@ async function sendCompletionMessage(phone, clientName, serviceType, techName) {
     return result;
   } catch (err) {
     console.error("❌ WhatsApp Send Error:", err);
-    throw err;
   }
 }
 
@@ -51,11 +49,11 @@ async function sendCompletionMessage(phone, clientName, serviceType, techName) {
 async function handler(req, res, user) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
-    return res.status(405).end();
+    return res.status(405).json({ ok: false, message: "Method Not Allowed" });
   }
 
   try {
-    const { id, status } = req.body || {};
+    const { id, status, notes = "" } = req.body || {};
 
     if (!id || !status) {
       return res.status(400).json({ ok: false, message: "id and status are required." });
@@ -69,13 +67,13 @@ async function handler(req, res, user) {
 
     const _id = new ObjectId(id);
 
-    // techIdCandidates ensures technicians can only update their own calls
+    // techIdCandidates ensures technicians can update their own calls
     const techIdCandidates = [user.id];
     if (ObjectId.isValid(user.id)) techIdCandidates.push(new ObjectId(user.id));
 
     const db = await getDb();
 
-    // find call before update (needed for WhatsApp variables and chooseCall)
+    // Find call before update
     const callData = await db.collection("forwarded_calls").findOne({
       _id,
       techId: { $in: techIdCandidates },
@@ -85,10 +83,34 @@ async function handler(req, res, user) {
       return res.status(404).json({ ok: false, message: "Call not found for this technician." });
     }
 
-    // update status in DB
+    const now = new Date();
+    const updateDoc = {
+      $set: {
+        status: String(status),
+        updatedAt: now,
+      }
+    };
+
+    if (notes && String(notes).trim()) {
+      updateDoc.$set.notes = String(notes).trim();
+    }
+
+    if (String(status) === "Closed" || String(status) === "Completed") {
+      updateDoc.$set.closedAt = now;
+      updateDoc.$set.closedBy = user.id;
+      updateDoc.$set.closedByName = user.username || callData.techName || "Technician";
+    } else if (String(status) === "Canceled") {
+      updateDoc.$set.canceledAt = now;
+      updateDoc.$set.canceledBy = user.id;
+      updateDoc.$set.canceledByName = user.username || callData.techName || "Technician";
+    } else if (String(status) === "Pending") {
+      updateDoc.$unset = { closedAt: "", closedBy: "", closedByName: "", canceledAt: "", canceledBy: "" };
+    }
+
+    // Update call in DB
     const result = await db.collection("forwarded_calls").updateOne(
       { _id, techId: { $in: techIdCandidates } },
-      { $set: { status: String(status) } }
+      updateDoc
     );
 
     res.setHeader("Cache-Control", "private, no-store");
@@ -97,53 +119,56 @@ async function handler(req, res, user) {
       return res.status(404).json({ ok: false, message: "Call not found." });
     }
 
-    // Respond immediately (ULTRA FAST) before background work
-    res.status(200).json({ ok: true, modified: result.modifiedCount === 1 });
+    // Respond immediately for ultra snappy UI
+    res.status(200).json({
+      ok: true,
+      modified: result.modifiedCount === 1,
+      closedAt: (String(status) === "Closed" || String(status) === "Completed") ? now : null,
+      closedByName: user.username || callData.techName,
+    });
 
     // ---------- Background tasks (non-blocking) ----------
-    // Send WhatsApp only when:
-    // 1) status === "Closed"
-    // 2) callData.chooseCall === "CHIMNEY_SOLUTIONS"
-    // otherwise skip WhatsApp.
-    if (String(status) === "Closed") {
-      const chosen = String(callData.chooseCall || "").toUpperCase();
-      if (chosen === "CHIMNEY_SOLUTIONS" || chosen === "CHIMNEY_SOLUTIONS".replace(/_/g, " ")) {
-        // small delay ensures response already flushed
-        setTimeout(async () => {
-          try {
-            await sendCompletionMessage(
-              callData.phone,
-              callData.clientName,
-              callData.type || "Service",
-              callData.techName || "Technician"
-            );
-            console.log("🎉 WhatsApp completion message queued (CHIMNEY_SOLUTIONS).");
-          } catch (waErr) {
-            console.error("⚠ WA completion send error (background):", waErr);
+    setImmediate(async () => {
+      try {
+        // 1. WhatsApp Notification on Close
+        if (String(status) === "Closed" || String(status) === "Completed") {
+          const chosen = String(callData.chooseCall || "").toUpperCase();
+          if (chosen === "CHIMNEY_SOLUTIONS" || chosen === "CHIMNEY SOLUTIONS") {
+            try {
+              await sendCompletionMessage(
+                callData.phone,
+                callData.clientName,
+                callData.type || "Service",
+                user.username || callData.techName || "Technician"
+              );
+            } catch (waErr) {
+              console.error("⚠ WA completion error:", waErr);
+            }
           }
-        }, 5); // tiny delay to keep main response immediate
-      } else {
-        console.log("ℹ️ Completion WA skipped — chooseCall is not CHIMNEY_SOLUTIONS:", callData.chooseCall);
-      }
-    } else {
-      // status is not Closed — nothing to do for WA
-      if (String(status) === "Canceled") {
-        console.log("🚫 Call canceled — no WhatsApp message required.");
-      } else {
-        console.log("ℹ️ Status updated to", status, "- no completion WA required.");
-      }
-    }
 
-    // ----------------------------------------------------------------
+          // 2. Log Admin Notification
+          await db.collection("notifications").insertOne({
+            to: "admin",
+            type: "call_closed",
+            title: "✅ Call Closed",
+            message: `Technician ${user.username || callData.techName} closed call for ${callData.clientName} (₹${callData.price || 0})`,
+            callId: String(_id),
+            clientName: callData.clientName,
+            techName: user.username || callData.techName,
+            closedAt: now,
+            createdAt: now,
+            read: false,
+          }).catch(() => {});
+        }
+      } catch (bgErr) {
+        console.error("⚠ Background task error in update-call:", bgErr);
+      }
+    });
 
   } catch (e) {
     console.error("update-status error:", e);
-    // If you already sent a response above, you can't send another — but here it's safe:
     return res.status(500).json({ ok: false, message: "Internal Server Error" });
   }
 }
 
 export default requireRole("technician")(handler);
-
-// 👍 Index suggestion (run once in mongo shell / migration):
-// db.forwarded_calls.createIndex({ _id: 1, techId: 1, chooseCall: 1 });

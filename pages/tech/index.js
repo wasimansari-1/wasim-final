@@ -75,6 +75,76 @@ export default function TechHome() {
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
+  // Patch SignaturePad to fix Chrome/Safari touchmove intervention warning
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => {
+      const pad =
+        sigRef.current?.getSignaturePad?.() ||
+        sigRef.current?._sigPad ||
+        sigRef.current;
+      const canvas =
+        sigRef.current?.getCanvas?.() ||
+        pad?._canvas ||
+        sigRef.current?._canvas;
+
+      if (pad && pad._handleTouchMove) {
+        const origTouchMove = pad._handleTouchMove;
+        const origTouchStart = pad._handleTouchStart;
+        const origTouchEnd = pad._handleTouchEnd;
+
+        pad._handleTouchMove = function (e) {
+          if (e && e.cancelable) {
+            e.preventDefault();
+          }
+          const touch = e?.targetTouches?.[0];
+          if (touch && typeof pad._strokeMoveUpdate === "function") {
+            pad._strokeMoveUpdate(touch);
+          }
+        };
+
+        if (origTouchStart) {
+          pad._handleTouchStart = function (e) {
+            if (e && e.cancelable) {
+              e.preventDefault();
+            }
+            if (e?.targetTouches?.length === 1) {
+              const touch = e.changedTouches[0];
+              if (touch && typeof pad._strokeBegin === "function") {
+                pad._strokeBegin(touch);
+              }
+            }
+          };
+        }
+
+        if (origTouchEnd) {
+          pad._handleTouchEnd = function (e) {
+            if (e && e.cancelable) {
+              e.preventDefault();
+            }
+            if (typeof pad._strokeEnd === "function") {
+              pad._strokeEnd(e);
+            }
+          };
+        }
+
+        if (canvas) {
+          canvas.style.touchAction = "none";
+          try {
+            canvas.removeEventListener("touchmove", origTouchMove);
+            canvas.removeEventListener("touchstart", origTouchStart);
+            canvas.removeEventListener("touchend", origTouchEnd);
+            canvas.addEventListener("touchstart", pad._handleTouchStart, { passive: false });
+            canvas.addEventListener("touchmove", pad._handleTouchMove, { passive: false });
+            canvas.addEventListener("touchend", pad._handleTouchEnd, { passive: false });
+          } catch {}
+        }
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   // Calls loader
   const loadCalls = async () => {
     try {
@@ -537,13 +607,14 @@ export default function TechHome() {
               {/* signature */}
               <div>
                 <div className="text-sm font-semibold mb-1">Client Signature</div>
-                <div className="border rounded-xl overflow-hidden">
+                <div className="border rounded-xl overflow-hidden bg-white shadow-sm" style={{ touchAction: "none" }}>
                   <SignaturePad
                     ref={sigRef}
                     canvasProps={{
                       width: canvasWidth,
                       height: 200,
-                      className: "sigCanvas w-full",
+                      className: "sigCanvas w-full bg-white",
+                      style: { touchAction: "none" },
                     }}
                   />
                 </div>

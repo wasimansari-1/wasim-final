@@ -2,10 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  experimental: {
-    appDir: true,
-  },
-
   // ✅ Rewrites ensure both files served from root
   async rewrites() {
     return [

@@ -10,10 +10,13 @@ async function handler(req, res) {
       .sort({ createdAt: -1 })
       .toArray();
 
+    const totalCount = data.length;
+
     return res.status(200).json(
-      data.map((x) => ({
+      data.map((x, idx) => ({
         ...x,
         _id: x._id.toString(),
+        srNo: totalCount - idx,
       }))
     );
 

@@ -15,10 +15,13 @@ import {
   FiPlus,
   FiLogOut,
   FiEdit,
-  FiArrowRight,
+  FiBell,
   FiPhoneForwarded,
   FiUserCheck,
+  FiDatabase,
 } from "react-icons/fi";
+import { FaWhatsapp } from "react-icons/fa";
+import CustomNotificationModal from "./admin/CustomNotificationModal";
 
 /** Safe, SSR-friendly reduced-motion hook */
 function useSafeReducedMotion() {
@@ -43,6 +46,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notifModalOpen, setNotifModalOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const shouldReduceMotion = useSafeReducedMotion();
 
@@ -52,19 +56,13 @@ export default function Header({ user = { role: "technician", name: "User", id: 
   const mountedRef = useRef(true);
 
   useEffect(() => {
-    // keep me in sync with prop when prop changes
     setMe(user);
   }, [user]);
 
   useEffect(() => {
-    // fetch fresh auth/me only on client and if role is technician and avatar missing
     if (typeof window === "undefined") return;
     if (!user) return;
-
-    // Only fetch if user is technician and avatar is missing (or we want freshest)
     if (user.role !== "technician") return;
-
-    // If avatar already present on prop, no need to fetch
     if (user.avatar) return;
 
     const ac = new AbortController();
@@ -76,11 +74,8 @@ export default function Header({ user = { role: "technician", name: "User", id: 
         if (!res.ok) return;
         const data = await res.json();
         if (!mountedRef.current) return;
-        // merge fields so we don't accidentally remove fields from prop
         setMe((prev) => ({ ...(prev || {}), ...(data || {}) }));
-      } catch (err) {
-        // ignore fetch aborts / network errors silently
-      }
+      } catch (err) {}
     })();
 
     return () => {
@@ -130,19 +125,23 @@ export default function Header({ user = { role: "technician", name: "User", id: 
     () => ({
       admin: [
         { href: "/admin", label: "Dashboard", icon: <FiHome /> },
-        { href: "/admin/forms", label: "Customer Service Forms", icon: <FiFileText /> },
-        { href: "/admin/forward", label: "New Call Assign", icon: <FiPhoneForwarded /> },
-        { href: "/admin/all-calls", label: "Edit Calls", icon: <FiEdit /> },
-        { href: "/admin/all-customers", label: "All Customers", icon: <FiUsers /> },
-        { href: "/admin/technician-calls", label: "Technician Call Details", icon: <FiUserCheck /> },
-        { href: "/admin/payments", label: "Payments / Reports", icon: <FiDollarSign /> },
+        { href: "/admin/forms", label: "Customer Forms", icon: <FiFileText /> },
+        { href: "/admin/forward", label: "Assign Call", icon: <FiPhoneForwarded /> },
+        { href: "/admin/all-calls", label: "All Calls", icon: <FiEdit /> },
+        { href: "/admin/all-customers", label: "Customers", icon: <FiUsers /> },
+        { href: "/admin/technician-calls", label: "Closed / Tech Calls", icon: <FiUserCheck /> },
+        { href: "/admin/payments", label: "Payments", icon: <FiDollarSign /> },
+        { href: "/admin/whatsapp-reports", label: "WhatsApp Reports", icon: <FaWhatsapp className="text-[#25D366]" /> },
+        { href: "/admin/backup", label: "Backup & Restore", icon: <FiDatabase /> },
         { href: "/admin/techs", label: "Technicians", icon: <FiUsers /> },
-        { href: "/admin/create-tech", label: "Create Technician", icon: <FiPlus /> },
+        { href: "/admin/create-tech", label: "+ Tech", icon: <FiPlus /> },
       ],
 
       technician: [
-        { href: "/tech", label: "Dashboard", icon: <FiHome /> },
-        { href: "/tech/payments", label: "Payment Mode", icon: <FiDollarSign /> },
+        { href: "/tech", label: "Service Form", icon: <FiHome /> },
+        { href: "/tech/calls", label: "My Calls", icon: <FiPhoneCall /> },
+        { href: "/tech/payments", label: "Payments", icon: <FiDollarSign /> },
+        { href: "/tech/profile", label: "Profile", icon: <FiUser /> },
       ],
     }),
     []
@@ -163,8 +162,6 @@ export default function Header({ user = { role: "technician", name: "User", id: 
   };
 
   const isAdmin = me?.role === "admin";
-
-  // avatar helper - show image only if present and not errored
   const avatarUrl = !imgError && (me?.avatar || me?.avatarUrl || null);
 
   return (
@@ -173,12 +170,12 @@ export default function Header({ user = { role: "technician", name: "User", id: 
         className={[
           "sticky top-0 z-[90] transition-all duration-200",
           "bg-gradient-to-r from-[#1e3a8a] via-[#1d4ed8] to-[#1e40af]",
-          "backdrop-blur-xl bg-opacity-90",
-          scrolled ? "shadow-2xl shadow-blue-900/20" : "shadow-lg shadow-blue-900/10",
+          "backdrop-blur-xl bg-opacity-95",
+          scrolled ? "shadow-2xl shadow-blue-900/25" : "shadow-lg shadow-blue-900/10",
         ].join(" ")}
         role="banner"
       >
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between px-3 sm:px-6 py-3">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5">
           {/* LEFT SIDE */}
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -199,45 +196,41 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                   whileHover={shouldReduceMotion ? {} : { scale: 1.05 }}
                   transition={{ duration: 0.12 }}
                 >
-                  <span className="text-white font-black">CS</span>
+                  <span className="text-white font-black text-sm">CS</span>
                 </motion.div>
-                <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-white truncate">
-                  Chimney <span className="text-blue-100">Solutions</span>
+                <h1 className="text-lg md:text-xl font-extrabold tracking-tight text-white truncate">
+                  Chimney <span className="text-blue-200">Solutions</span>
                 </h1>
               </div>
-              <div className="h-0.5 w-0 group-hover:w-full transition-all duration-300 bg-white/30 rounded-full" />
             </Link>
           </div>
 
           {/* DESKTOP NAV */}
-          <nav aria-label="Primary" className="hidden md:flex items-center justify-center flex-1 min-w-0 px-2">
+          <nav aria-label="Primary" className="hidden md:flex items-center justify-center flex-1 min-w-0 px-3">
             {isAdmin ? (
-              <div className="relative w-full max-w-[980px]">
-                <div className="pointer-events-none absolute left-0 top-0 h-full w-6 rounded-l-[22px] bg-gradient-to-r from-white/80 to-transparent" />
-                <div className="pointer-events-none absolute right-0 top-0 h-full w-6 rounded-r-[22px] bg-gradient-to-l from-white/80 to-transparent" />
-
-                <div className="relative bg-white/90 backdrop-blur rounded-[22px] p-1 shadow-sm ring-1 ring-black/5 flex items-center gap-1 overflow-x-auto no-scrollbar">
+              <div className="relative w-full max-w-[1000px]">
+                <div className="relative bg-white/90 backdrop-blur rounded-[20px] p-1 shadow-sm ring-1 ring-black/5 flex items-center gap-1 overflow-x-auto no-scrollbar">
                   {links.map((link) => {
                     const active = isActive(link.href);
                     return (
                       <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className="relative block">
                         <span
                           className={[
-                            "flex items-center gap-2 px-4 py-2 rounded-[18px] text-sm whitespace-nowrap",
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-[16px] text-xs font-semibold whitespace-nowrap",
                             "transition duration-150",
-                            active ? "text-white" : "text-gray-700 hover:text-gray-900",
+                            active ? "text-white" : "text-gray-700 hover:text-gray-900 hover:bg-black/5",
                           ].join(" ")}
                         >
                           {active && (
                             <motion.span
                               layoutId="adminTabHighlight"
                               transition={{ duration: 0.15 }}
-                              className="absolute inset-0 rounded-[18px] bg-gradient-to-r from-indigo-600 to-blue-600 shadow-md"
+                              className="absolute inset-0 rounded-[16px] bg-gradient-to-r from-blue-600 to-indigo-600 shadow-sm"
                               aria-hidden="true"
                             />
                           )}
-                          <span className="relative z-[1] text-base opacity-90">{link.icon}</span>
-                          <span className="relative z-[1] truncate font-medium">{link.label}</span>
+                          <span className="relative z-[1] text-sm opacity-90">{link.icon}</span>
+                          <span className="relative z-[1] truncate">{link.label}</span>
                         </span>
                       </Link>
                     );
@@ -251,13 +244,13 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                     <Link
                       href={link.href}
                       className={[
-                        "flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all duration-150",
+                        "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all duration-150 font-semibold text-xs",
                         isActive(link.href)
-                          ? "bg-white/15 ring-1 ring-white/20 text-white"
+                          ? "bg-white/20 ring-1 ring-white/30 text-white shadow-sm"
                           : "text-white/80 hover:text-white hover:bg-white/10",
                       ].join(" ")}
                     >
-                      <span className="text-base" aria-hidden="true">{link.icon}</span>
+                      <span className="text-sm" aria-hidden="true">{link.icon}</span>
                       <span className="truncate">{link.label}</span>
                     </Link>
                   </div>
@@ -266,15 +259,30 @@ export default function Header({ user = { role: "technician", name: "User", id: 
             )}
           </nav>
 
-          {/* RIGHT PROFILE */}
+          {/* RIGHT PROFILE & ACTIONS */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Admin Custom Notification Trigger */}
+            {isAdmin && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="button"
+                onClick={() => setNotifModalOpen(true)}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition"
+                title="Send Custom Push Notification"
+              >
+                <FiBell className="text-sm animate-bounce" />
+                <span className="hidden sm:inline">Push Alert</span>
+              </motion.button>
+            )}
+
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setProfileOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={profileOpen}
-                className="flex items-center gap-2 bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-xl text-sm text-white font-semibold shadow-inner transition active:scale-95"
+                className="flex items-center gap-2 bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm text-white font-semibold shadow-inner transition active:scale-95"
               >
                 <div className="h-7 w-7 rounded-full bg-white/20 ring-1 ring-white/30 grid place-items-center overflow-hidden">
                   {avatarUrl ? (
@@ -288,7 +296,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                     <span className="text-[11px] font-bold">{initials(me?.displayName || me?.username || me?.name)}</span>
                   )}
                 </div>
-                <span className="hidden sm:block max-w-[140px] truncate">{me?.displayName || me?.username || me?.name || "Profile"}</span>
+                <span className="hidden sm:block max-w-[120px] truncate">{me?.displayName || me?.username || me?.name || "Profile"}</span>
                 <FiUser aria-hidden="true" className="opacity-80" />
               </button>
 
@@ -303,21 +311,36 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                     role="menu"
                   >
                     <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-xs uppercase tracking-wider text-gray-500">Signed in as</p>
+                      <p className="text-xs uppercase tracking-wider text-gray-500 font-bold">Signed in as</p>
                       <p className="text-sm font-semibold text-gray-900 truncate">{me?.displayName || me?.username || me?.name || "User"}</p>
-                      <p className="text-[11px] text-gray-500">Role: {me?.role || "guest"}</p>
+                      <p className="text-[11px] text-gray-500">Role: <span className="font-semibold text-blue-600">{me?.role || "guest"}</span></p>
                     </div>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setNotifModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-amber-700 hover:bg-amber-50 transition text-sm font-medium"
+                        role="menuitem"
+                      >
+                        <FiBell aria-hidden="true" /> Send Push Notification
+                      </button>
+                    )}
+
                     <Link
                       href={me?.role === "admin" ? "/admin" : "/tech/profile"}
-                      className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-blue-50 transition text-sm"
+                      className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-blue-50 transition text-sm font-medium"
                       role="menuitem"
                       onClick={() => setProfileOpen(false)}
                     >
                       <FiUser aria-hidden="true" /> My Profile
                     </Link>
+
                     <button
                       onClick={handleLogout}
-                      className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-red-600 hover:bg-red-50 transition text-sm"
+                      className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-red-600 hover:bg-red-50 transition text-sm font-medium border-t border-gray-100"
                       role="menuitem"
                     >
                       <FiLogOut aria-hidden="true" /> Logout
@@ -330,13 +353,13 @@ export default function Header({ user = { role: "technician", name: "User", id: 
         </div>
       </header>
 
-      {/* MOBILE MENU */}
+      {/* MOBILE MENU DRAWER */}
       <AnimatePresence>
         {menuOpen && (
           <>
             <motion.div
               key="overlay"
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm md:hidden z-[100]"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm md:hidden z-[100]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -351,13 +374,14 @@ export default function Header({ user = { role: "technician", name: "User", id: 
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ duration: 0.2 }}
-              className="fixed top-0 left-0 w-80 max-w-[85vw] h-full bg-gradient-to-b from-[#1d4ed8] to-[#1e40af] text-white z-[110] p-6 flex flex-col shadow-2xl md:hidden overflow-y-auto"
+              className="fixed top-0 left-0 w-80 max-w-[85vw] h-full bg-gradient-to-b from-[#1d4ed8] to-[#1e3a8a] text-white z-[110] p-5 flex flex-col shadow-2xl md:hidden overflow-y-auto"
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/15">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-white/20 grid place-items-center ring-1 ring-white/20">
                     <span className="text-xs font-bold">CS</span>
                   </div>
+                  <span className="font-extrabold text-base">Chimney Solutions</span>
                 </div>
                 <button
                   type="button"
@@ -369,8 +393,20 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                 </button>
               </div>
 
-              <p className="text-xs uppercase tracking-wider text-white/80 mb-3">
-                {me?.role === "admin" ? "Admin Menu" : "Technician Menu"}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setNotifModalOpen(true);
+                  }}
+                  className="mb-4 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-amber-400 text-amber-950 font-bold text-sm shadow-md active:scale-95 transition"
+                >
+                  <FiBell className="text-base" /> Send Push Notification
+                </button>
+              )}
+
+              <p className="text-xs uppercase tracking-wider text-white/70 mb-2 font-bold">
+                {me?.role === "admin" ? "Admin Navigation" : "Technician Navigation"}
               </p>
 
               <div className="space-y-1">
@@ -379,35 +415,38 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                     key={link.href}
                     href={link.href}
                     className={[
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition",
-                      isActive(link.href) ? "bg-white/20 ring-1 ring-white/20" : "hover:bg-white/10",
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition",
+                      isActive(link.href) ? "bg-white/20 ring-1 ring-white/30 text-white font-semibold" : "hover:bg-white/10 text-white/90",
                     ].join(" ")}
                     onClick={() => setMenuOpen(false)}
                   >
-                    <span className="text-lg" aria-hidden="true">{link.icon}</span>
+                    <span className="text-base" aria-hidden="true">{link.icon}</span>
                     <span>{link.label}</span>
                   </Link>
                 ))}
               </div>
 
-              <div className="mt-auto pt-5">
+              <div className="mt-auto pt-5 border-t border-white/15">
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 bg-red-500 hover:bg-red-600 rounded-xl text-white text-sm font-semibold transition shadow-lg"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-red-500 hover:bg-red-600 rounded-xl text-white text-sm font-semibold transition shadow-lg"
                 >
                   <FiLogOut aria-hidden="true" /> Logout
                 </button>
-                <p className="text-[11px] text-white/70 mt-3">v1.0 • Secure • Fast UI</p>
+                <p className="text-[11px] text-white/70 mt-3 text-center">Chimney Solutions CRM • v2.0</p>
               </div>
             </motion.nav>
           </>
         )}
       </AnimatePresence>
 
-      <style jsx global>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      {/* Custom Notification Modal */}
+      {isAdmin && (
+        <CustomNotificationModal
+          isOpen={notifModalOpen}
+          onClose={() => setNotifModalOpen(false)}
+        />
+      )}
     </>
   );
 }

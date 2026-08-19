@@ -80,6 +80,76 @@ export default function Payments() {
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
+  // Patch SignaturePad to fix Chrome/Safari touchmove intervention warning
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => {
+      const pad =
+        sigRef.current?.getSignaturePad?.() ||
+        sigRef.current?._sigPad ||
+        sigRef.current;
+      const canvas =
+        sigRef.current?.getCanvas?.() ||
+        pad?._canvas ||
+        sigRef.current?._canvas;
+
+      if (pad && pad._handleTouchMove) {
+        const origTouchMove = pad._handleTouchMove;
+        const origTouchStart = pad._handleTouchStart;
+        const origTouchEnd = pad._handleTouchEnd;
+
+        pad._handleTouchMove = function (e) {
+          if (e && e.cancelable) {
+            e.preventDefault();
+          }
+          const touch = e?.targetTouches?.[0];
+          if (touch && typeof pad._strokeMoveUpdate === "function") {
+            pad._strokeMoveUpdate(touch);
+          }
+        };
+
+        if (origTouchStart) {
+          pad._handleTouchStart = function (e) {
+            if (e && e.cancelable) {
+              e.preventDefault();
+            }
+            if (e?.targetTouches?.length === 1) {
+              const touch = e.changedTouches[0];
+              if (touch && typeof pad._strokeBegin === "function") {
+                pad._strokeBegin(touch);
+              }
+            }
+          };
+        }
+
+        if (origTouchEnd) {
+          pad._handleTouchEnd = function (e) {
+            if (e && e.cancelable) {
+              e.preventDefault();
+            }
+            if (typeof pad._strokeEnd === "function") {
+              pad._strokeEnd(e);
+            }
+          };
+        }
+
+        if (canvas) {
+          canvas.style.touchAction = "none";
+          try {
+            canvas.removeEventListener("touchmove", origTouchMove);
+            canvas.removeEventListener("touchstart", origTouchStart);
+            canvas.removeEventListener("touchend", origTouchEnd);
+            canvas.addEventListener("touchstart", pad._handleTouchStart, { passive: false });
+            canvas.addEventListener("touchmove", pad._handleTouchMove, { passive: false });
+            canvas.addEventListener("touchend", pad._handleTouchEnd, { passive: false });
+          } catch {}
+        }
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   // ✅ Fetch user fast
   useEffect(() => {
     const controller = new AbortController();
@@ -220,14 +290,22 @@ export default function Payments() {
         const permission = await Notification.requestPermission();
         if (permission !== "granted") return;
 
-        const token = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY });
+        const token = await getToken(messaging, {
+          vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "BNQGS7VCHzRbEZi5xMvzVFIlsGr6aFtkEtEbaK43x39Y8vLT-wexc738Y-AlycYmKBasGrxTcP6udOSymXUHZKg",
+        });
 
         if (mounted && token) {
           setDeviceToken(token);
+          const uid = user?.id || user?._id || localStorage.getItem("userId");
           fetch("/api/save-fcm-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token }),
+            body: JSON.stringify({
+              token,
+              userId: uid,
+              username: user?.username || localStorage.getItem("username"),
+              role: "technician",
+            }),
           }).catch(() => {});
         }
 
@@ -476,14 +554,19 @@ export default function Payments() {
     );
 
   return (
-    <div className="pb-20">
+    <div className="min-h-screen bg-slate-50 safe-bottom">
       <Header user={user} />
 
-      <main className="max-w-2xl mx-auto p-4 space-y-3">
-        <div className="card bg-white p-4 rounded-2xl shadow-md">
-          <div className="flex items-center gap-2 mb-3">
-            <div>💳</div>
-            <div className="font-semibold text-gray-800 text-lg">Service Payments</div>
+      <main className="max-w-2xl mx-auto p-3 sm:p-6 space-y-4">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/80 space-y-5">
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white grid place-items-center text-xl shadow-md shadow-blue-500/20">
+              💳
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-slate-900">Payment Collection</h1>
+              <p className="text-xs text-slate-500">Record cash / online payments & receiver signature.</p>
+            </div>
           </div>
 
           <form onSubmit={submit} className="grid gap-3">
@@ -570,8 +653,8 @@ export default function Payments() {
             {/* 🔹 Signature */}
             <div>
               <div className="text-sm font-semibold mb-1">Receiver Signature</div>
-              <div className="border rounded-xl overflow-hidden shadow-sm">
-                <SignaturePad ref={sigRef} onEnd={handleSigEnd} canvasProps={{ className: "sigCanvas bg-white w-full", width: canvasWidth, height: 200 }} />
+              <div className="border rounded-xl overflow-hidden shadow-sm bg-white" style={{ touchAction: "none" }}>
+                <SignaturePad ref={sigRef} onEnd={handleSigEnd} canvasProps={{ className: "sigCanvas bg-white w-full", width: canvasWidth, height: 200, style: { touchAction: "none" } }} />
               </div>
               <div className="text-xs text-gray-500 mt-1">Signature required. <button type="button" onClick={clearSig} className="underline">Clear</button></div>
             </div>

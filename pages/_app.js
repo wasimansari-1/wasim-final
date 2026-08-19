@@ -3,14 +3,7 @@ import Head from "next/head";
 import "../styles/globals.css";
 import { useEffect, useRef, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
-
-/**
- * Optimized _app:
- * - dynamically imports firebase libs so initial bundle stays small
- * - registers service worker non-blocking
- * - initializes notifications on idle (or short timeout fallback)
- * - forces favicon in Head (cache-buster)
- */
+import NotificationPermissionBanner from "../components/NotificationPermissionBanner";
 
 export default function MyApp({ Component, pageProps }) {
   const [token, setToken] = useState(null);
@@ -33,141 +26,164 @@ export default function MyApp({ Component, pageProps }) {
 
     let cancelled = false;
 
-    const fetchWithTimeout = async (url, opts = {}, timeout = 5000) => {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), timeout);
-      try {
-        const res = await fetch(url, {
-          ...opts,
-          signal: controller.signal,
-          keepalive: opts.keepalive ?? true,
-        });
-        clearTimeout(id);
-        return res;
-      } catch (err) {
-        clearTimeout(id);
-        throw err;
-      }
-    };
-
     const registerAndInit = async () => {
       try {
-        // dynamic imports to keep initial bundle small
+        // 1. Register Service Worker with wide scope
+        let swReg = null;
+        if ("serviceWorker" in navigator) {
+          try {
+            swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
+              scope: "/",
+            });
+            console.log("✅ Service Worker registered:", swReg.scope);
+          } catch (err) {
+            console.warn("❌ Service Worker registration failed:", err);
+          }
+        }
+
+        // 2. Fetch logged in user identity
+        let currentUser = null;
+        try {
+          const authRes = await fetch("/api/auth/me", { credentials: "same-origin" });
+          if (authRes.ok) {
+            currentUser = await authRes.json();
+            if (currentUser?.id) {
+              localStorage.setItem("userId", currentUser.id);
+              localStorage.setItem("userRole", currentUser.role || "technician");
+              if (currentUser.username) localStorage.setItem("username", currentUser.username);
+            }
+          }
+        } catch (e) {}
+
+        // 3. Dynamic Firebase Import
         const firebaseAppMod = await import("firebase/app");
         const firebaseMessagingMod = await import("firebase/messaging");
 
         const { initializeApp, getApps, getApp } = firebaseAppMod;
-        const { getMessaging, getToken, onMessage } = firebaseMessagingMod;
+        const { getMessaging, getToken, onMessage, isSupported } = firebaseMessagingMod;
 
-        const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
-        // register service worker (non-blocking)
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker
-            .register("/firebase-messaging-sw.js")
-            .then((registration) => {
-              console.log("✅ Service Worker registered:", registration.scope);
-            })
-            .catch((err) =>
-              console.warn("❌ Service Worker registration failed:", err)
-            );
-        }
-
-        let messaging;
-        try {
-          messaging = getMessaging(app);
-        } catch (err) {
-          console.warn("⚠️ Messaging init failed:", err);
+        const supported = await isSupported();
+        if (!supported) {
+          console.warn("⚠️ Firebase Messaging not supported in this browser");
           return;
         }
 
-        const doInitNotifications = async () => {
-          if (cancelled) return;
+        const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+        const messaging = getMessaging(app);
 
-          try {
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") {
-              console.warn("🚫 Notification permission denied");
-              return;
-            }
-
-            let currentToken = null;
+        // 4. Request System Notification Permission & Get Token
+        if ("Notification" in window) {
+          const permission = await Notification.requestPermission();
+          if (permission === "granted") {
             try {
-              currentToken = await getToken(messaging, {
+              const currentToken = await getToken(messaging, {
                 vapidKey:
+                  process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ||
                   "BNQGS7VCHzRbEZi5xMvzVFIlsGr6aFtkEtEbaK43x39Y8vLT-wexc738Y-AlycYmKBasGrxTcP6udOSymXUHZKg",
+                serviceWorkerRegistration: swReg || undefined,
               });
-            } catch (err) {
-              console.warn("⚠️ getToken error:", err);
-            }
 
-            if (currentToken) {
-              if (cancelled) return;
-              console.log("📱 FCM Token:", currentToken);
-              setToken(currentToken);
-              toast.success("Notifications enabled");
+              if (currentToken && !cancelled) {
+                setToken(currentToken);
+                console.log("📱 Device FCM Push Token Registered:", currentToken);
 
-              const userId =
-                localStorage.getItem("technicianId") ||
-                localStorage.getItem("userId") ||
-                "68f9dd15eecc8fd42548a6a8";
+                const userId = currentUser?.id || currentUser?._id || localStorage.getItem("userId");
+                const username = currentUser?.username || localStorage.getItem("username");
+                const role = currentUser?.role || localStorage.getItem("userRole") || "technician";
 
-              try {
-                const res = await fetchWithTimeout(
-                  "/api/save-fcm-token",
-                  {
+                if (userId || username) {
+                  await fetch("/api/save-fcm-token", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       token: currentToken,
                       userId,
-                      role: "technician",
+                      username,
+                      role,
                     }),
-                    keepalive: true,
-                  },
-                  5000
-                );
-                const data = await res.json();
-                console.log("📦 Token save response:", data);
-                if (data.ok) toast.success("Token saved to DB!");
-                else toast.error("Failed to save token");
-              } catch (err) {
-                console.warn("⚠️ Token save failed:", err);
-              }
-            } else {
-              console.warn("⚠️ No registration token available.");
-            }
-
-            onMessage(messaging, (payload) => {
-              console.log("📩 Foreground message:", payload);
-              const { title, body } = payload.notification || {};
-              if (title && body) {
-                try {
-                  new Notification(title, { body, icon: "/logo.png" });
-                } catch (e) {
-                  console.warn("Notification failed:", e);
+                  });
+                  console.log("✅ Device Push Token Linked to User:", userId || username);
                 }
-                toast(`${title}: ${body}`);
               }
-            });
-          } catch (err) {
-            console.error("🔥 Error init notifications:", err);
+            } catch (err) {
+              console.warn("⚠️ getToken error:", err);
+            }
           }
-        };
-
-        // run when idle, fallback to short timeout
-        if ("requestIdleCallback" in window) {
-          window.requestIdleCallback(
-            () => {
-              if (!cancelled) doInitNotifications();
-            },
-            { timeout: 1500 }
-          );
-        } else {
-          setTimeout(() => {
-            if (!cancelled) doInitNotifications();
-          }, 800);
         }
+
+        // 5. Handle Push Messages: Trigger REAL Native System Notification like Instagram/Facebook
+        onMessage(messaging, (payload) => {
+          if (cancelled) return;
+          console.log("📩 Incoming Push Received:", payload);
+
+          const title = payload?.notification?.title || payload?.data?.title || "📞 New Notification";
+          const body = payload?.notification?.body || payload?.data?.body || "";
+          const targetUrl = payload?.data?.url || "/tech/calls";
+
+          // 🔊 Audio feedback
+          try {
+            const audio = new Audio("/forward.mp3");
+            audio.play().catch(() => {});
+          } catch (e) {}
+
+          // 📳 Phone vibration (native haptics)
+          try {
+            if (navigator.vibrate) {
+              navigator.vibrate([500, 150, 500, 150, 500]);
+            }
+          } catch (e) {}
+
+          // ⚡ Trigger REAL OS-Level Native System Notification (shows in Status Bar / Notification Center)
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                navigator.serviceWorker.ready.then((reg) => {
+                  reg.showNotification(title, {
+                    body,
+                    icon: "/icons/icon-192x192.png",
+                    badge: "/icons/icon-192x192.png",
+                    vibrate: [500, 150, 500, 150, 500],
+                    requireInteraction: true,
+                    renotify: true,
+                    tag: payload?.data?.forwardedCallId || `cs-alert-${Date.now()}`,
+                    data: { url: targetUrl },
+                  });
+                });
+              } else {
+                new Notification(title, {
+                  body,
+                  icon: "/icons/icon-192x192.png",
+                  badge: "/icons/icon-192x192.png",
+                  vibrate: [500, 150, 500, 150, 500],
+                });
+              }
+            } catch (notifErr) {
+              console.warn("Native notification display error:", notifErr);
+            }
+          }
+
+          // In-App Toast Banner
+          toast.custom(
+            (t) => (
+              <div
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  if (targetUrl) window.location.href = targetUrl;
+                }}
+                className="cursor-pointer max-w-md w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white shadow-2xl rounded-2xl p-4 flex items-center gap-3 border border-white/25 transform transition-all hover:scale-[1.02] animate-bounce"
+              >
+                <div className="h-10 w-10 rounded-xl bg-white/20 grid place-items-center flex-shrink-0 text-xl shadow-inner">
+                  🔔
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-extrabold text-sm tracking-tight truncate">{title}</div>
+                  <div className="text-xs text-blue-100 line-clamp-2 mt-0.5">{body}</div>
+                </div>
+              </div>
+            ),
+            { duration: 7000, position: "top-right" }
+          );
+        });
       } catch (err) {
         console.error("🔥 registerAndInit error:", err);
       }
@@ -183,13 +199,22 @@ export default function MyApp({ Component, pageProps }) {
   return (
     <>
       <Head>
-        {/* FORCE favicon + preload */}
-        <link rel="icon" href="/favicon.png?v=999" />
-        <link rel="shortcut icon" href="/favicon.png?v=999" />
-        <link rel="preload" as="image" href="/favicon.png?v=999" />
+        {/* iOS Zoom prevention & responsive viewport */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        {/* Brand icons */}
+        <link rel="icon" href="/favicon.png" />
+        <link rel="shortcut icon" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </Head>
 
-      <Toaster position="top-right" />
+      <Toaster position="top-right" reverseOrder={false} />
+      <NotificationPermissionBanner />
       <Component {...pageProps} />
     </>
   );

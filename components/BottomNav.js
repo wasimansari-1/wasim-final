@@ -1,58 +1,83 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Home, PhoneCall, CreditCard, User } from "lucide-react";
-import { useEffect } from "react";
+import { FiHome, FiPhoneCall, FiCreditCard, FiUser } from "react-icons/fi";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
 export default function BottomNav() {
-  const r = useRouter();
+  const router = useRouter();
+  const [pendingCount, setPendingCount] = useState(0);
 
-  // ✅ Prefetch manually once on mount (still allowed)
   useEffect(() => {
     const paths = ["/tech", "/tech/calls", "/tech/payments", "/tech/profile"];
-    paths.forEach((path) => r.prefetch(path));
-  }, [r]);
+    paths.forEach((path) => router.prefetch(path));
+  }, [router]);
+
+  useEffect(() => {
+    // Check pending calls count for badge
+    (async () => {
+      try {
+        const res = await fetch("/api/tech/my-calls?tab=Pending&pageSize=1");
+        const data = await res.json();
+        if (data?.total) setPendingCount(data.total);
+      } catch (e) {}
+    })();
+  }, [router.pathname]);
 
   const items = [
-    { href: "/tech", label: "Form", icon: <Home size={22} strokeWidth={1.8} /> },
-    { href: "/tech/calls", label: "Calls", icon: <PhoneCall size={22} strokeWidth={1.8} /> },
-    { href: "/tech/payments", label: "Payment", icon: <CreditCard size={22} strokeWidth={1.8} /> },
-    { href: "/tech/profile", label: "Profile", icon: <User size={22} strokeWidth={1.8} /> },
+    { href: "/tech", label: "Service Form", icon: <FiHome size={20} /> },
+    {
+      href: "/tech/calls",
+      label: "My Calls",
+      icon: <FiPhoneCall size={20} />,
+      badge: pendingCount > 0 ? pendingCount : null,
+    },
+    { href: "/tech/payments", label: "Payments", icon: <FiCreditCard size={20} /> },
+    { href: "/tech/profile", label: "Profile", icon: <FiUser size={20} /> },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 to-white backdrop-blur-lg border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:hidden z-50">
-      <div className="grid grid-cols-4">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/90 backdrop-blur-2xl border-t border-slate-200/80 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] px-2 pt-2 pb-[calc(10px+env(safe-area-inset-bottom,12px))]">
+      <div className="grid grid-cols-4 items-center">
         {items.map((it) => {
-          const isActive = r.pathname === it.href;
+          const isActive = router.pathname === it.href;
           return (
             <Link
               key={it.href}
               href={it.href}
               shallow
               scroll={false}
-              className={`relative flex flex-col items-center justify-center py-3 transition-all duration-200 ${
-                isActive ? "text-blue-600 scale-105" : "text-gray-500"
-              }`}
+              className="relative flex flex-col items-center justify-center py-1 group select-none"
             >
+              {isActive && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-blue-50 rounded-2xl -z-10"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+
               <div
-                className={`flex items-center justify-center transition-all duration-200 ${
-                  isActive ? "scale-110" : ""
+                className={`relative flex items-center justify-center transition-transform duration-200 ${
+                  isActive ? "text-blue-600 scale-110" : "text-slate-500 group-hover:text-slate-800"
                 }`}
               >
                 {it.icon}
+
+                {it.badge && (
+                  <span className="absolute -top-1.5 -right-2.5 h-4 min-w-[16px] px-1 bg-red-500 text-white text-[10px] font-extrabold rounded-full grid place-items-center shadow-sm animate-pulse">
+                    {it.badge}
+                  </span>
+                )}
               </div>
 
               <span
-                className={`text-[11px] mt-1 font-medium ${
-                  isActive ? "text-blue-600" : "text-gray-500"
+                className={`text-[11px] mt-1 font-bold tracking-tight transition-colors duration-150 ${
+                  isActive ? "text-blue-600" : "text-slate-500"
                 }`}
               >
                 {it.label}
               </span>
-
-              {isActive && (
-                <span className="absolute bottom-0 w-8 h-[3px] bg-blue-500 rounded-full transition-all duration-200" />
-              )}
             </Link>
           );
         })}

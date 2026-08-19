@@ -1,4 +1,4 @@
- // pages/api/admin/forwarded.js
+// pages/api/admin/forwarded.js
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 
 async function handler(req, res) {
@@ -32,11 +32,13 @@ async function handler(req, res) {
     // COUNT
     const total = await coll.countDocuments(match);
 
-    // DATA
+    const skipCount = (Number(page) - 1) * Number(limit);
+
+    // DATA (newest first, with chronological srNo where oldest = 1)
     const items = await coll
       .find(match)
       .sort({ createdAt: -1 })
-      .skip((Number(page) - 1) * Number(limit))
+      .skip(skipCount)
       .limit(Number(limit))
       .toArray();
 
@@ -47,9 +49,10 @@ async function handler(req, res) {
       success: true,
       total,
       hasMore,
-      items: items.map((x) => ({
+      items: items.map((x, idx) => ({
         ...x,
         _id: x._id.toString(),
+        srNo: total - (skipCount + idx),
       })),
     });
 

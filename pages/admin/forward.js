@@ -3,8 +3,8 @@
 import Header from "../../components/Header";
 import { useEffect, useRef, useState, useTransition, useCallback } from "react";
 import toast from "react-hot-toast";
+import { FiPhoneForwarded, FiSend, FiUser, FiPhone, FiMapPin, FiDollarSign, FiClock, FiFileText, FiTag } from "react-icons/fi";
 
-// ⭐ Preload Sound (ULTRA FAST)
 const forwardSound = typeof window !== "undefined"
   ? new Audio("/forward.mp3")
   : null;
@@ -14,7 +14,7 @@ export default function Forward() {
   const [techs, setTechs] = useState([]);
   const [loading, startTransition] = useTransition();
 
-  // FORM refs (0 re-renders)
+  // FORM refs
   const clientNameRef = useRef();
   const phoneRef = useRef();
   const addressRef = useRef();
@@ -23,9 +23,8 @@ export default function Forward() {
   const timeZoneRef = useRef();
   const notesRef = useRef();
   const techRef = useRef();
-  const chooseRef = useRef(); // <-- NEW: Choose Call
+  const chooseRef = useRef();
 
-  // ============== ULTRA FAST DATA LOAD ==============
   useEffect(() => {
     (async () => {
       try {
@@ -48,12 +47,11 @@ export default function Forward() {
         setTechs(techData.items || []);
       } catch (err) {
         console.error(err);
-        toast.error("Failed to load data");
+        toast.error("Failed to load technician list");
       }
     })();
   }, []);
 
-  // ============== SUBMIT (ULTRA FAST + SOUND + LOADING) ==============
   const submit = useCallback(
     async (e) => {
       e.preventDefault();
@@ -67,7 +65,7 @@ export default function Forward() {
         timeZone: timeZoneRef.current.value.trim(),
         notes: notesRef.current.value.trim(),
         techId: techRef.current.value,
-        chooseCall: chooseRef.current.value, // <-- NEW
+        chooseCall: chooseRef.current.value,
       };
 
       if (
@@ -77,11 +75,11 @@ export default function Forward() {
         !payload.techId ||
         !payload.chooseCall
       ) {
-        toast.error("All required fields must be filled (including Choose Call)");
+        toast.error("Please fill all required fields");
         return;
       }
 
-      // ⭐ PLAY INSTANT SOUND
+      // Play Sound
       try {
         if (forwardSound) {
           forwardSound.currentTime = 0;
@@ -104,9 +102,9 @@ export default function Forward() {
             return;
           }
 
-          toast.success("Call forwarded instantly ⚡");
+          toast.success("Call assigned & push notification sent 🔔⚡");
 
-          // RESET FORM (ZERO LAG)
+          // Reset Form
           clientNameRef.current.value = "";
           phoneRef.current.value = "";
           addressRef.current.value = "";
@@ -115,7 +113,7 @@ export default function Forward() {
           timeZoneRef.current.value = "";
           notesRef.current.value = "";
           techRef.current.value = "";
-          chooseRef.current.value = ""; // reset choose
+          chooseRef.current.value = "";
         } catch (err) {
           console.error(err);
           toast.error("Network error");
@@ -126,70 +124,164 @@ export default function Forward() {
   );
 
   return (
-    <div>
+    <div className="min-h-screen bg-slate-50">
       <Header user={user} />
 
-      <main className="max-w-3xl mx-auto p-4 space-y-3">
-        <div className="p-4 shadow-md rounded-xl border border-gray-200 bg-white">
-          <div className="font-semibold text-lg mb-3">📞Call Forward</div>
+      <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-4">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-8 space-y-6">
+          {/* Header */}
+          <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+            <div className="h-12 w-12 rounded-2xl bg-blue-600 text-white grid place-items-center shadow-md shadow-blue-500/20 text-xl">
+              <FiPhoneForwarded />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
+                New Call Assignment
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500">
+                Forward client service request and notify technician instantly via push.
+              </p>
+            </div>
+          </div>
 
-          <form onSubmit={submit} className="grid gap-3">
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Client Name */}
+              <div>
+                <label className="label flex items-center gap-1"><FiUser /> Client Name *</label>
+                <input
+                  ref={clientNameRef}
+                  className="input"
+                  placeholder="Enter client name"
+                  required
+                />
+              </div>
 
-            <input ref={clientNameRef} className="input border p-2 rounded" placeholder="Client Name" required />
+              {/* Phone */}
+              <div>
+                <label className="label flex items-center gap-1"><FiPhone /> Phone Number *</label>
+                <input
+                  ref={phoneRef}
+                  type="tel"
+                  className="input"
+                  placeholder="e.g. 9876543210"
+                  required
+                />
+              </div>
+            </div>
 
-            <input ref={phoneRef} className="input border p-2 rounded" placeholder="Phone Number" required />
+            {/* Address */}
+            <div>
+              <label className="label flex items-center gap-1"><FiMapPin /> Client Address *</label>
+              <textarea
+                ref={addressRef}
+                className="input min-h-[70px] resize-none"
+                placeholder="Full address with landmark..."
+                rows={2}
+                required
+              />
+            </div>
 
-            <input ref={addressRef} className="input border p-2 rounded" placeholder="Address" required />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Price */}
+              <div>
+                <label className="label flex items-center gap-1"><FiDollarSign /> Service Price (₹) *</label>
+                <input
+                  ref={priceRef}
+                  className="input"
+                  placeholder="e.g. 500"
+                  type="number"
+                  min="0"
+                  required
+                />
+              </div>
 
-            <input ref={priceRef} className="input border p-2 rounded" placeholder="Price" type="number" min="0" required />
+              {/* Type */}
+              <div>
+                <label className="label flex items-center gap-1"><FiTag /> Service Type *</label>
+                <input
+                  ref={typeRef}
+                  className="input"
+                  placeholder="e.g. Chimney / Hob / Cleaning"
+                  required
+                />
+              </div>
 
-            <input ref={typeRef} className="input border p-2 rounded" placeholder="Type (Chimney / Hob)" required />
+              {/* Time Zone */}
+              <div>
+                <label className="label flex items-center gap-1"><FiClock /> Preferred Time</label>
+                <input
+                  ref={timeZoneRef}
+                  className="input"
+                  placeholder="e.g. Morning / 2-4 PM"
+                />
+              </div>
+            </div>
 
-            <input ref={timeZoneRef} className="input border p-2 rounded" placeholder="Time Zone (Morning / Evening)" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Choose Call */}
+              <div>
+                <label className="label flex items-center gap-1"><FiTag /> Brand / Call Source *</label>
+                <select
+                  ref={chooseRef}
+                  className="input bg-white"
+                  required
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    -- Select Source --
+                  </option>
+                  <option value="CHIMNEY_SOLUTIONS">CHIMNEY SOLUTIONS (WhatsApp Enabled)</option>
+                  <option value="TKS">TKS</option>
+                </select>
+              </div>
 
-            <textarea ref={notesRef} className="input border p-2 rounded" placeholder="Notes" rows={3} />
+              {/* Technician */}
+              <div>
+                <label className="label flex items-center gap-1"><FiUser /> Assign Technician *</label>
+                <select
+                  ref={techRef}
+                  className="input bg-white"
+                  required
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Select Technician --</option>
+                  {techs.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {t.username || t.name} {t.phone ? `(${t.phone})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-                {/* ===== NEW: Choose Call field ===== */}
-            <label className="text-sm font-medium">Choose Call</label>
-            <select ref={chooseRef} className="input border p-2 rounded" required defaultValue="">
-              <option value="" disabled>
-                -- Select Call Type --
-              </option>
-              <option value="CHIMNEY_SOLUTIONS">CHIMNEY SOLUTIONS</option>
-              <option value="TKS">TKS</option>
-            </select>
+            {/* Notes */}
+            <div>
+              <label className="label flex items-center gap-1"><FiFileText /> Special Notes</label>
+              <textarea
+                ref={notesRef}
+                className="input min-h-[60px] resize-none"
+                placeholder="Any special customer instructions..."
+                rows={2}
+              />
+            </div>
 
-            <select ref={techRef} className="input border p-2 rounded" required>
-              <option value="">Select Technician</option>
-              {techs.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.username}
-                </option>
-              ))}
-            </select>
-
-        
-
+            {/* Submit button */}
             <button
+              type="submit"
               disabled={loading}
-              className={`bg-blue-600 text-white rounded p-2 mt-2 transition flex items-center justify-center gap-2 ${
-                loading ? "opacity-50" : "hover:bg-blue-700"
-              }`}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/25 transition active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2 text-base mt-2"
             >
-              {loading && (
-                <span className="loader border-2 w-4 h-4 rounded-full border-white border-t-transparent animate-spin"></span>
+              {loading ? (
+                <span className="inline-block border-2 w-5 h-5 rounded-full border-white border-t-transparent animate-spin" />
+              ) : (
+                <FiSend className="text-lg" />
               )}
-              {loading ? "Forwarding..." : "Forward"}
+              <span>{loading ? "Forwarding & Notifying Technician..." : "Assign Call & Push Notify Technician"}</span>
             </button>
           </form>
         </div>
       </main>
-
-      <style>{`
-        .loader {
-          display: inline-block;
-        }
-      `}</style>
     </div>
   );
 }

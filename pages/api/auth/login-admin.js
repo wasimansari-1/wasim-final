@@ -11,7 +11,6 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
-    // body read + auto trim (important)
     const username = (req.body?.username || "").trim();
     const password = (req.body?.password || "").trim();
 
@@ -20,28 +19,23 @@ export default async function handler(req, res) {
     }
 
     const db = await getDb();
-
-    // 👉 your real admin is in "admins" collection
     const admin = await db.collection("admins").findOne({ username });
 
     if (!admin) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // 👉 password field in DB = passwordHash
     const isMatch = await bcrypt.compare(password, admin.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // JWT (no expiry)
     const token = signToken({
       id: admin._id.toString(),
       username: admin.username,
       role: "admin",
     });
 
-    // cookie — very long lifetime (10 years)
     res.setHeader(
       "Set-Cookie",
       serialize("token", token, {
@@ -53,7 +47,15 @@ export default async function handler(req, res) {
       })
     );
 
-    return res.status(200).json({ ok: true, message: "Login successful" });
+    return res.status(200).json({
+      ok: true,
+      message: "Login successful",
+      user: {
+        id: admin._id.toString(),
+        username: admin.username,
+        role: "admin",
+      },
+    });
   } catch (err) {
     console.error("Login Error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
