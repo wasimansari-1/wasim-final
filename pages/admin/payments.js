@@ -52,21 +52,31 @@ export default function Payments() {
     }
   }, [range, from, to]);
 
-  // ---------------- AUTH + TECH LIST ----------------
+  // ---------------- AUTH + TECH LIST (PARALLEL) ----------------
   useEffect(() => {
     (async () => {
       try {
-        const me = await fetch("/api/auth/me");
-        const u = await me.json();
+        const [meRes, trRes] = await Promise.all([
+          fetch("/api/auth/me").catch(() => null),
+          fetch("/api/admin/techs").catch(() => null),
+        ]);
+
+        if (!meRes || !meRes.ok) {
+          window.location.href = "/login";
+          return;
+        }
+
+        const u = await meRes.json();
         if (!u || u.role !== "admin") {
           window.location.href = "/login";
           return;
         }
         setUser(u);
 
-        const tr = await fetch("/api/admin/techs");
-        const td = await tr.json();
-        setTechs(td.items || []);
+        if (trRes && trRes.ok) {
+          const td = await trRes.json().catch(() => ({ items: [] }));
+          setTechs(td.items || []);
+        }
       } catch (err) {
         console.error(err);
         toast.error("Auth failed");
@@ -364,13 +374,16 @@ export default function Payments() {
               </thead>
 
               <tbody>
-                {loading && (
-                  <tr>
-                    <td colSpan={9} className="p-6 text-center text-slate-500">
-                      Loading payments...
-                    </td>
-                  </tr>
-                )}
+                {loading &&
+                  [1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i} className="border-t border-slate-100">
+                      {Array.from({ length: 9 }).map((_, c) => (
+                        <td key={c} className="p-3">
+                          <div className="skeleton-shimmer h-4 w-full rounded-md" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
 
                 {!loading && items.length === 0 && (
                   <tr>
@@ -438,8 +451,10 @@ export default function Payments() {
         {/* ================= MOBILE CARD LIST ================= */}
         <section className="space-y-3 md:hidden">
           {loading && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 text-center text-slate-500 text-sm">
-              Loading payments...
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="skeleton-shimmer h-28 rounded-2xl border border-slate-100" />
+              ))}
             </div>
           )}
 

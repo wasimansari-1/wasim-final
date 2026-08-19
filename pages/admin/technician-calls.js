@@ -395,7 +395,7 @@ export default function TechnicianCallsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="h-36 rounded-2xl bg-slate-100 animate-pulse" />
+                    <div key={i} className="h-36 rounded-2xl skeleton-shimmer border border-slate-100" />
                   ))
                 : techs.map((t) => (
                     <div
@@ -474,7 +474,7 @@ export default function TechnicianCallsPage() {
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-24 bg-slate-100 rounded-2xl animate-pulse" />
+                  <div key={i} className="h-28 rounded-2xl skeleton-shimmer border border-slate-100" />
                 ))}
               </div>
             ) : filteredCalls.length === 0 ? (

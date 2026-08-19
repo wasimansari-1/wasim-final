@@ -87,11 +87,21 @@ export default requireRole("admin")(async (req, res) => {
           $or: [
             { userId: String(newTechData._id) },
             { userObjectId: newTechData._id },
-            { username: newTechData.username },
+            { username: { $regex: new RegExp("^" + (newTechData.username || "") + "$", "i") } },
+            ...(newTechData.name ? [{ username: { $regex: new RegExp("^" + newTechData.name + "$", "i") } }] : []),
           ],
         }).toArray();
 
-        const tokens = tokenDocs.map(d => d.token).filter(Boolean);
+        const dbTokens = tokenDocs.map((d) => d.token).filter(Boolean);
+        const directTokens = Array.isArray(newTechData.fcmTokens)
+          ? newTechData.fcmTokens
+          : newTechData.fcmToken
+          ? [newTechData.fcmToken]
+          : [];
+
+        const tokens = Array.from(new Set([...dbTokens, ...directTokens])).filter(
+          (t) => typeof t === "string" && t.trim().length > 20
+        );
 
         for (const token of tokens) {
           await sendNotification(

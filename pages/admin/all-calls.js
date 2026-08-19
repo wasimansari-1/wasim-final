@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Header from "../../components/Header";
 import { FiEdit, FiTrash, FiRepeat, FiSearch, FiX, FiCheckCircle, FiClock } from "react-icons/fi";
 import toast from "react-hot-toast";
+import { CallCardSkeleton } from "../../components/Skeleton";
 
 /* -------------------------------------------------------------
    SAFE ID HELPER
@@ -177,10 +178,7 @@ export default function AllCalls() {
   const Skeleton = () => (
     <div className="space-y-3 mt-4">
       {[1, 2, 3, 4, 5].map((i) => (
-        <div
-          key={i}
-          className="animate-pulse bg-gray-200/70 h-24 rounded-2xl shadow-sm"
-        />
+        <CallCardSkeleton key={i} />
       ))}
     </div>
   );

@@ -85,7 +85,8 @@ export default function MyApp({ Component, pageProps }) {
 
               if (currentToken && !cancelled) {
                 setToken(currentToken);
-                console.log("📱 Device FCM Push Token Registered:", currentToken);
+                localStorage.setItem("fcmToken", currentToken);
+                console.log("📱 Device FCM Push Token Registered:", currentToken.slice(-10));
 
                 const userId = currentUser?.id || currentUser?._id || localStorage.getItem("userId");
                 const username = currentUser?.username || localStorage.getItem("username");
@@ -101,8 +102,7 @@ export default function MyApp({ Component, pageProps }) {
                       username,
                       role,
                     }),
-                  });
-                  console.log("✅ Device Push Token Linked to User:", userId || username);
+                  }).catch(() => {});
                 }
               }
             } catch (err) {
@@ -111,12 +111,12 @@ export default function MyApp({ Component, pageProps }) {
           }
         }
 
-        // 5. Handle Push Messages: Trigger REAL Native System Notification like Instagram/Facebook
+        // 5. Foreground Notification Handling (In-App Toast Banner only, no duplicate OS spam)
         onMessage(messaging, (payload) => {
           if (cancelled) return;
           console.log("📩 Incoming Push Received:", payload);
 
-          const title = payload?.notification?.title || payload?.data?.title || "📞 New Notification";
+          const title = payload?.notification?.title || payload?.data?.title || "⚡ Chimney Solutions";
           const body = payload?.notification?.body || payload?.data?.body || "";
           const targetUrl = payload?.data?.url || "/tech/calls";
 
@@ -132,35 +132,6 @@ export default function MyApp({ Component, pageProps }) {
               navigator.vibrate([500, 150, 500, 150, 500]);
             }
           } catch (e) {}
-
-          // ⚡ Trigger REAL OS-Level Native System Notification (shows in Status Bar / Notification Center)
-          if ("Notification" in window && Notification.permission === "granted") {
-            try {
-              if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-                navigator.serviceWorker.ready.then((reg) => {
-                  reg.showNotification(title, {
-                    body,
-                    icon: "/icons/icon-192x192.png",
-                    badge: "/icons/icon-192x192.png",
-                    vibrate: [500, 150, 500, 150, 500],
-                    requireInteraction: true,
-                    renotify: true,
-                    tag: payload?.data?.forwardedCallId || `cs-alert-${Date.now()}`,
-                    data: { url: targetUrl },
-                  });
-                });
-              } else {
-                new Notification(title, {
-                  body,
-                  icon: "/icons/icon-192x192.png",
-                  badge: "/icons/icon-192x192.png",
-                  vibrate: [500, 150, 500, 150, 500],
-                });
-              }
-            } catch (notifErr) {
-              console.warn("Native notification display error:", notifErr);
-            }
-          }
 
           // In-App Toast Banner
           toast.custom(

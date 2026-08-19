@@ -2,11 +2,13 @@
 
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
+import { CallCardSkeleton } from "../../components/Skeleton";
 import {
   useEffect,
   useMemo,
   useState,
   useCallback,
+  useRef,
   memo,
 } from "react";
 import toast from "react-hot-toast";
@@ -100,11 +102,20 @@ function timeAgo(dateStr) {
 }
 
 export default function TechCalls() {
-  const [user, setUser] = useState(null);
-  const [tab, setTab] = useState("All Calls");
+  const [user, setUser] = useState(() => {
+    if (typeof window !== "undefined") {
+      const id = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      if (id || username) return { id, username, role: "technician", name: username };
+    }
+    return null;
+  });
+
+  const [tab, setTab] = useState("Pending");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
   const [globalCounts, setGlobalCounts] = useState({
     all: 0,
     pending: 0,
@@ -119,7 +130,7 @@ export default function TechCalls() {
   const [updatingId, setUpdatingId] = useState(null);
   const [detailModalCall, setDetailModalCall] = useState(null);
 
-  // User Auth
+  // Background User Validation
   useEffect(() => {
     (async () => {
       try {
@@ -144,10 +155,11 @@ export default function TechCalls() {
     })();
   }, []);
 
+  const tabCacheRef = useRef({});
+
   // Fetch Calls with 10-per-page Backend Pagination
   const fetchCalls = useCallback(
     async (showNotify = false) => {
-      if (!user) return;
       try {
         setRefreshing(true);
         const params = new URLSearchParams({
@@ -156,12 +168,13 @@ export default function TechCalls() {
           pageSize: String(PAGE_SIZE),
         });
 
-        const res = await fetch(`/api/tech/my-calls?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const data = await res.json();
+        const res = await fetch(`/api/tech/my-calls?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
 
         if (data.success && Array.isArray(data.items)) {
+          const cacheKey = `${tab}_${page}`;
+          tabCacheRef.current[cacheKey] = data;
+
           setCalls(data.items);
           if (data.totalPages !== undefined) setTotalPages(data.totalPages || 1);
           if (data.totalCount !== undefined) setTotalCount(data.totalCount || 0);
@@ -186,9 +199,20 @@ export default function TechCalls() {
 
   useEffect(() => {
     if (user) {
+      const cacheKey = `${tab}_${page}`;
+      if (tabCacheRef.current[cacheKey]) {
+        const cached = tabCacheRef.current[cacheKey];
+        setCalls(cached.items || []);
+        if (cached.totalPages !== undefined) setTotalPages(cached.totalPages || 1);
+        if (cached.totalCount !== undefined) setTotalCount(cached.totalCount || 0);
+        if (cached.counts) setGlobalCounts(cached.counts);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       fetchCalls();
     }
-  }, [user, fetchCalls]);
+  }, [user, tab, page, fetchCalls]);
 
   // Firestore Realtime Listener
   useEffect(() => {
@@ -525,7 +549,7 @@ export default function TechCalls() {
         {loading ? (
           <div className="space-y-3 pt-1">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="skeleton-shimmer h-44 rounded-3xl" />
+              <CallCardSkeleton key={i} />
             ))}
           </div>
         ) : visibleCalls.length === 0 ? (

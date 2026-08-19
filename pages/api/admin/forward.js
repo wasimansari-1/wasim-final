@@ -141,13 +141,20 @@ async function forwardCore(req, res, user) {
 
         // 2. FCM Push Notification to Assigned Technician (Multi-Device Push)
         try {
+          const candidates = [
+            String(tech._id),
+            tech.username,
+            tech.name,
+            tech.fullName,
+          ].filter(Boolean);
+
           const techTokenDocs = await db.collection("fcm_tokens").find({
             $or: [
               { userId: String(tech._id) },
               { userObjectId: tech._id },
-              { username: tech.username },
-              { username: tech.name },
-              { username: tech.fullName },
+              { username: { $in: candidates } },
+              { username: { $regex: new RegExp("^" + (tech.username || "") + "$", "i") } },
+              ...(tech.name ? [{ username: { $regex: new RegExp("^" + tech.name + "$", "i") } }] : []),
             ],
           }).toArray();
 

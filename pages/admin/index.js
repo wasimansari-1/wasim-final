@@ -22,7 +22,15 @@ import PaymentPopup from "../../components/admin/PaymentPopup";
 import CustomNotificationModal from "../../components/admin/CustomNotificationModal";
 
 export default function AdminHome() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    if (typeof window !== "undefined") {
+      const id = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      const role = localStorage.getItem("userRole");
+      if (role === "admin") return { id, username, role: "admin", name: username };
+    }
+    return null;
+  });
   const [stats, setStats] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -34,20 +42,24 @@ export default function AdminHome() {
   const [openPayments, setOpenPayments] = useState(false);
   const [openCustomNotif, setOpenCustomNotif] = useState(false);
 
-  // FAST FETCH
+  // FAST PARALLEL FETCH WITH SWR FEEL
   useEffect(() => {
     (async () => {
       try {
-        const me = await fetch("/api/auth/me");
-        if (!me.ok) return (window.location.href = "/login");
+        const [meRes, sumRes] = await Promise.all([
+          fetch("/api/auth/me").catch(() => null),
+          fetch("/api/admin/summary").catch(() => null),
+        ]);
 
-        const u = await me.json();
+        if (!meRes || !meRes.ok) return (window.location.href = "/login");
+        const u = await meRes.json();
         if (u.role !== "admin") return (window.location.href = "/login");
         setUser(u);
 
-        const sumRes = await fetch("/api/admin/summary");
-        const sum = await sumRes.json();
-        setStats(sum);
+        if (sumRes && sumRes.ok) {
+          const sum = await sumRes.json().catch(() => null);
+          if (sum) setStats(sum);
+        }
 
         setChartData([
           { name: "Mon", calls: 12, forms: 5 },

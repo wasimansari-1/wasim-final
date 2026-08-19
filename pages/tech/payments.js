@@ -70,8 +70,15 @@ function getInitials(name) {
 }
 
 export default function Payments() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    if (typeof window !== "undefined") {
+      const id = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      if (id || username) return { id, username, role: "technician", name: username };
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [deviceToken, setDeviceToken] = useState(null);
@@ -181,27 +188,29 @@ export default function Payments() {
 
   // ✅ Fetch user fast
   useEffect(() => {
-    const controller = new AbortController();
+    let isMounted = true;
     (async () => {
       try {
-        const me = await fetch("/api/auth/me", { signal: controller.signal });
+        const me = await fetch("/api/auth/me");
         if (!me.ok) {
-          window.location.href = "/login";
+          if (isMounted) window.location.href = "/login";
           return;
         }
         const u = await me.json();
         if (u.role !== "technician") {
-          window.location.href = "/login";
+          if (isMounted) window.location.href = "/login";
           return;
         }
-        setUser(u);
+        if (isMounted) setUser(u);
       } catch (err) {
-        if (err.name !== "AbortError") console.error(err);
+        // silent
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     })();
-    return () => controller.abort();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // ----------------------------
@@ -216,14 +225,15 @@ export default function Payments() {
         pageSize: "1000",
       });
 
-      const r1 = await fetch("/api/tech/my-calls?" + params.toString(), {
-        cache: "no-store",
-      });
-      const d1 = await r1.json();
-      const apiCalls = Array.isArray(d1.items) ? d1.items : [];
+      const [r1, r2] = await Promise.all([
+        fetch("/api/tech/my-calls?" + params.toString()).catch(() => null),
+        fetch("/api/tech/payment-check").catch(() => null),
+      ]);
 
-      const r2 = await fetch("/api/tech/payment-check", { cache: "no-store" }).catch(() => null);
+      const d1 = r1 ? await r1.json().catch(() => ({ items: [] })) : { items: [] };
       const d2 = r2 ? await r2.json().catch(() => null) : null;
+
+      const apiCalls = Array.isArray(d1.items) ? d1.items : [];
       const paidCallIds = new Set(Array.isArray(d2?.paidCallIds) ? d2.paidCallIds.map(String) : []);
       const paidKeySet = new Set(Array.isArray(d2?.paidKeys) ? d2.paidKeys : []);
 
@@ -1047,9 +1057,10 @@ export default function Payments() {
               {/* List */}
               <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 py-1">
                 {callsLoading && (
-                  <div className="text-center text-slate-500 py-8 text-xs font-semibold space-y-2">
-                    <div className="h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                    <div>Loading calls...</div>
+                  <div className="space-y-2 py-1">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="skeleton-shimmer h-16 rounded-2xl border border-slate-100" />
+                    ))}
                   </div>
                 )}
 

@@ -9,11 +9,6 @@ export default function BottomNav() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    const paths = ["/tech", "/tech/calls", "/tech/payments", "/tech/profile"];
-    paths.forEach((path) => router.prefetch(path));
-  }, [router]);
-
-  useEffect(() => {
     // Check pending calls count for badge
     (async () => {
       try {
@@ -46,8 +41,7 @@ export default function BottomNav() {
             <Link
               key={it.href}
               href={it.href}
-              shallow
-              scroll={false}
+              prefetch={true}
               className="relative flex flex-col items-center justify-center py-1 group select-none"
             >
               {isActive && (

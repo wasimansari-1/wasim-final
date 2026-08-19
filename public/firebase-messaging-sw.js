@@ -15,21 +15,20 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-function showNativeNotification(payload) {
-  console.log("⚡ Showing OS-level System Notification:", payload);
-
+function showProfessionalNotification(payload) {
   const title =
     payload?.notification?.title ||
     payload?.data?.title ||
-    "📞 New Notification";
+    "⚡ Chimney Solutions Lead";
 
   const body =
     payload?.notification?.body ||
     payload?.data?.body ||
-    "New update from Chimney Solutions CRM.";
+    "New lead assigned to you. Open to view details.";
 
   const data = payload?.data || {};
   const targetUrl = data.url || "/tech/calls";
+  const tag = data.tag || data.forwardedCallId ? `lead_${data.forwardedCallId}` : `cs_lead_${Date.now()}`;
 
   const notificationOptions = {
     body,
@@ -40,15 +39,14 @@ function showNativeNotification(payload) {
       url: targetUrl,
       time: Date.now(),
     },
-    tag: data.forwardedCallId || `cs-alert-${Date.now()}`,
-    renotify: true,
-    requireInteraction: true,
-    vibrate: [500, 150, 500, 150, 500],
-    sound: "/forward.mp3",
+    tag,
+    renotify: false,
+    requireInteraction: false,
+    vibrate: [300, 100, 300],
     actions: [
       {
-        action: "open_app",
-        title: "📞 View Call",
+        action: "open_lead",
+        title: "📱 Open Lead",
       },
     ],
   };
@@ -58,30 +56,11 @@ function showNativeNotification(payload) {
 
 // ⚡ 1. FCM Background Handler
 messaging.onBackgroundMessage((payload) => {
-  return showNativeNotification(payload);
+  console.log("⚡ [SW] FCM Background Message Received:", payload);
+  return showProfessionalNotification(payload);
 });
 
-// ⚡ 2. Raw WebPush Handler (Guarantees 100% OS Push Delivery on all devices/browsers)
-self.addEventListener("push", (event) => {
-  if (!event.data) return;
-  try {
-    const payload = event.data.json();
-    event.waitUntil(showNativeNotification(payload));
-  } catch (err) {
-    const text = event.data.text();
-    event.waitUntil(
-      self.registration.showNotification("📞 Chimney Solutions Alert", {
-        body: text || "You have a new update",
-        icon: "/icons/icon-192x192.png",
-        badge: "/icons/icon-192x192.png",
-        vibrate: [500, 150, 500, 150, 500],
-        data: { url: "/tech/calls" },
-      })
-    );
-  }
-});
-
-// ⚡ Handle notification click & wake-up window
+// ⚡ 2. Handle notification click & wake-up window
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 

@@ -46,6 +46,21 @@ export default function Login() {
         localStorage.setItem("userId", d.user.id);
         localStorage.setItem("userRole", d.user.role);
         localStorage.setItem("username", d.user.username);
+
+        // Sync device token to user
+        const existingToken = localStorage.getItem("fcmToken");
+        if (existingToken) {
+          fetch("/api/save-fcm-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: existingToken,
+              userId: d.user.id,
+              username: d.user.username,
+              role: d.user.role,
+            }),
+          }).catch(() => {});
+        }
       }
 
       toast.success("Login successful 🎉");

@@ -26,10 +26,17 @@ function playSuccessSound() {
 }
 
 export default function TechHome() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    if (typeof window !== "undefined") {
+      const id = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      if (id || username) return { id, username, role: "technician", name: username };
+    }
+    return null;
+  });
   const [isPending, startTransition] = useTransition();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
@@ -183,25 +190,48 @@ export default function TechHome() {
     }
   };
 
-  // Auth + initial load
+  // Auth + initial parallel load
   useEffect(() => {
     (async () => {
       try {
-        const me = await fetch("/api/auth/me", { cache: "no-store" });
-        if (!me.ok) {
+        const [meRes, callsRes] = await Promise.all([
+          fetch("/api/auth/me").catch(() => null),
+          fetch("/api/tech/my-calls?tab=All%20Calls&page=1&pageSize=50").catch(() => null),
+        ]);
+
+        if (!meRes || !meRes.ok) {
           window.location.href = "/login";
           return;
         }
-        const u = await me.json();
+        const u = await meRes.json();
         if (u.role !== "technician") {
           window.location.href = "/login";
           return;
         }
+
         startTransition(() => {
           setUser(u);
           setLoading(false);
         });
-        loadCalls();
+
+        if (callsRes && callsRes.ok) {
+          const d = await callsRes.json().catch(() => ({ items: [] }));
+          if (d?.success && Array.isArray(d.items)) {
+            const mapped = d.items.map((i) => ({
+              _id: i._id || i.id || "",
+              clientName: i.clientName ?? i.customerName ?? i.name ?? i.fullName ?? "",
+              phone: i.phone ?? "",
+              address: i.address ?? "",
+              type: i.type ?? "",
+              price: i.price ?? 0,
+              status: i.status ?? "Pending",
+              createdAt: i.createdAt ?? "",
+              timeZone: i.timeZone ?? "",
+              notes: i.notes ?? "",
+            }));
+            setCalls(mapped);
+          }
+        }
       } catch {
         window.location.href = "/login";
       }
@@ -677,8 +707,10 @@ export default function TechHome() {
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {callsLoading && (
-                  <div className="text-center text-gray-500 py-4 text-sm">
-                    Loading calls...
+                  <div className="space-y-2 py-1">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="skeleton-shimmer h-14 rounded-xl border border-slate-100" />
+                    ))}
                   </div>
                 )}
 
