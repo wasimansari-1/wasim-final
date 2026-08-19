@@ -42,6 +42,18 @@ export default function Profile() {
         setUser(u);
         setAvatar(u.avatar || null);
         setAvatarPublicId(u.avatarPublicId || null);
+
+        // Fetch fresh profile from DB
+        try {
+          const profRes = await fetch("/api/tech/profile", { credentials: "same-origin" });
+          if (profRes.ok) {
+            const profData = await profRes.json();
+            if (profData.avatar) setAvatar(profData.avatar);
+            if (profData.avatarPublicId) setAvatarPublicId(profData.avatarPublicId);
+          }
+        } catch (e) {
+          console.warn("Could not fetch extra profile data:", e);
+        }
       } catch {
         window.location.href = "/login";
       }

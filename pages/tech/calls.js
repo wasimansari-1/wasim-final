@@ -34,9 +34,9 @@ import { db } from "../../lib/firebase";
 
 const TABS = [
   { id: "All Calls", label: "All Calls", icon: FaPhoneAlt },
-  { id: "Pending", label: "Pending Calls", icon: FaClock },
-  { id: "Closed", label: "Closed Calls", icon: FaCheck },
-  { id: "Canceled", label: "Canceled Calls", icon: FaTimes },
+  { id: "Pending", label: "Pending", icon: FaClock },
+  { id: "Closed", label: "Closed", icon: FaCheck },
+  { id: "Canceled", label: "Canceled", icon: FaTimes },
 ];
 
 const PAGE_SIZE = 60;
@@ -312,18 +312,22 @@ export default function TechCalls() {
 
       <main className="max-w-lg mx-auto px-3.5 py-2.5 space-y-2.5">
         {/* Compact, Ultra-Sleek Top Bar (Takes minimal space above fold) */}
-        <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-slate-200/80 flex items-center justify-between gap-2">
+        <div className="bg-white rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-sm border border-slate-200/80 flex items-center justify-between gap-2">
           {/* User info */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-8 w-8 rounded-xl bg-slate-900 text-white font-bold grid place-items-center text-xs shrink-0 shadow-sm">
-              {(user?.username || "T")[0].toUpperCase()}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-slate-900 text-white font-bold grid place-items-center text-xs shrink-0 shadow-sm overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt="avatar" className="h-full w-full object-cover" />
+              ) : (
+                (user?.username || "T")[0].toUpperCase()
+              )}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
+              <div className="text-[11px] sm:text-xs font-bold text-slate-900 truncate flex items-center gap-1">
                 <span>{user?.username || "Technician"}</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
               </div>
-              <div className="text-[10px] text-slate-400 font-medium">{calls.length} Total Calls</div>
+              <div className="text-[9px] sm:text-[10px] text-slate-400 font-medium">{calls.length} Calls Total</div>
             </div>
           </div>
 
@@ -331,7 +335,7 @@ export default function TechCalls() {
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setTab("Pending")}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-xl text-[10px] sm:text-xs font-bold transition flex items-center gap-1 ${
                 tab === "Pending"
                   ? "bg-amber-100 text-amber-900 ring-1 ring-amber-400"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -339,12 +343,12 @@ export default function TechCalls() {
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
               <span>{pendingCalls.length}</span>
-              <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">Pending</span>
+              <span className="text-[9px] text-slate-500 font-medium hidden sm:inline">Pending</span>
             </button>
 
             <button
               onClick={() => setTab("Closed")}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-xl text-[10px] sm:text-xs font-bold transition flex items-center gap-1 ${
                 tab === "Closed"
                   ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-400"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -352,20 +356,20 @@ export default function TechCalls() {
             >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               <span>{closedCalls.length}</span>
-              <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">Done</span>
+              <span className="text-[9px] text-slate-500 font-medium hidden sm:inline">Done</span>
             </button>
 
             <button
               onClick={() => fetchCalls(true)}
               disabled={refreshing}
-              className="h-7 w-7 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-600 grid place-items-center transition"
+              className="h-6 w-6 sm:h-7 sm:w-7 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-600 grid place-items-center transition shrink-0"
               title="Refresh"
             >
               <motion.div
                 animate={refreshing ? { rotate: 360 } : { rotate: 0 }}
                 transition={{ duration: 0.8, repeat: refreshing ? Infinity : 0 }}
               >
-                <FaSyncAlt size={11} />
+                <FaSyncAlt size={10} />
               </motion.div>
             </button>
           </div>
@@ -373,9 +377,9 @@ export default function TechCalls() {
 
         {/* Full-Width Professional Search Field */}
         <div className="relative w-full">
-          <FaSearch className="absolute left-3.5 top-3 text-slate-400 text-xs" />
+          <FaSearch className="absolute left-3 top-2.5 text-slate-400 text-[11px]" />
           <input
-            className="w-full bg-white border border-slate-200/90 rounded-2xl pl-9 pr-9 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 shadow-sm transition"
+            className="w-full bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl pl-8 pr-8 py-1.5 sm:py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 shadow-2xs transition"
             placeholder="Search by client name, mobile, address..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -383,16 +387,16 @@ export default function TechCalls() {
           {query && (
             <button
               onClick={() => setQuery("")}
-              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 p-0.5"
+              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 p-0.5"
             >
-              <FiX size={14} />
+              <FiX size={13} />
             </button>
           )}
         </div>
 
         {/* Fluid Animated Scrolling Tab Bar */}
         <div className="w-full overflow-x-auto no-scrollbar py-0.5">
-          <div className="flex items-center gap-2 min-w-max px-0.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-max px-0.5">
             {TABS.map((t) => {
               const isActive = tab === t.id;
               const Icon = t.icon;
@@ -412,8 +416,8 @@ export default function TechCalls() {
                     setTab(t.id);
                     vibrate([15]);
                   }}
-                  className={`relative px-4 py-2 rounded-2xl text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 select-none shrink-0 ${
-                    isActive ? "text-white" : "text-slate-600 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-sm"
+                  className={`relative px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 select-none shrink-0 ${
+                    isActive ? "text-white" : "text-slate-600 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs"
                   }`}
                 >
                   {/* Sliding Spring Background Pill */}
@@ -421,7 +425,7 @@ export default function TechCalls() {
                     <motion.div
                       layoutId="activeCallTabPill"
                       transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                      className={`absolute inset-0 rounded-2xl shadow-md ${
+                      className={`absolute inset-0 rounded-xl sm:rounded-2xl shadow-md ${
                         t.id === "Pending"
                           ? "bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20"
                           : t.id === "Closed"
@@ -434,17 +438,17 @@ export default function TechCalls() {
                   )}
 
                   {/* Tab Label & Icon */}
-                  <span className="relative z-10 flex items-center gap-1.5">
-                    <Icon size={11} className={isActive ? "text-white" : "text-slate-400"} />
-                    <span>{t.label}</span>
+                  <span className="relative z-10 flex items-center gap-1">
+                    <Icon size={10} className={isActive ? "text-white" : "text-slate-400"} />
+                    <span className="tracking-tight">{t.label}</span>
                   </span>
 
                   {/* Counter Pill */}
                   {count > 0 && (
                     <span
-                      className={`relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                      className={`relative z-10 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black ${
                         isActive
-                          ? "bg-white/20 text-white backdrop-blur-sm"
+                          ? "bg-white/25 text-white"
                           : "bg-slate-100 text-slate-700"
                       }`}
                     >

@@ -33,7 +33,8 @@ async function handler(req, res, tokenUser) {
     return res.json({
       _id: technician._id.toString(),
       username: technician.username,
-      avatar: technician.avatar || null,
+      name: technician.name || technician.fullName || technician.username,
+      avatar: technician.avatar || technician.profilePic || technician.avatarUrl || technician.photo || technician.image || null,
       avatarPublicId: technician.avatarPublicId || null,
       createdAt: technician.createdAt,
     });
