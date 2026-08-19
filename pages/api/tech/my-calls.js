@@ -54,12 +54,23 @@ async function handler(req, res, user) {
 
     const skip = (page - 1) * pageSize;
 
+    // Fetch total counts for all tabs concurrently
+    const [totalCount, totalAll, totalPending, totalClosed, totalCanceled] = await Promise.all([
+      forwardedColl.countDocuments(match),
+      forwardedColl.countDocuments({ techId: { $in: techIds } }),
+      forwardedColl.countDocuments({ techId: { $in: techIds }, status: { $in: ["Pending", "In Process"] } }),
+      forwardedColl.countDocuments({ techId: { $in: techIds }, status: { $in: ["Closed", "Completed"] } }),
+      forwardedColl.countDocuments({ techId: { $in: techIds }, status: { $in: ["Canceled", "Cancelled"] } }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / pageSize) || 1;
+
     // Fetch forwarded calls slice
     const docs = await forwardedColl
       .find(match)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(pageSize + 1)
+      .limit(pageSize)
       .project({
         clientName: 1,
         customerName: 1,
@@ -88,12 +99,26 @@ async function handler(req, res, user) {
       })
       .toArray();
 
-    const hasMore = docs.length > pageSize;
-    const slice = docs.slice(0, pageSize);
+    const hasMore = page < totalPages;
+    const slice = docs;
 
     if (slice.length === 0) {
       res.setHeader("Cache-Control", "private, no-store");
-      return res.status(200).json({ success: true, items: [], page, pageSize, hasMore });
+      return res.status(200).json({
+        success: true,
+        items: [],
+        page,
+        pageSize,
+        totalCount,
+        totalPages,
+        hasMore: false,
+        counts: {
+          all: totalAll,
+          pending: totalPending,
+          closed: totalClosed,
+          canceled: totalCanceled,
+        },
+      });
     }
 
     // Build arrays to query payments efficiently
@@ -176,7 +201,15 @@ async function handler(req, res, user) {
       items,
       page,
       pageSize,
+      totalCount,
+      totalPages,
       hasMore,
+      counts: {
+        all: totalAll,
+        pending: totalPending,
+        closed: totalClosed,
+        canceled: totalCanceled,
+      },
     });
   } catch (err) {
     console.error("my-calls error:", err);
