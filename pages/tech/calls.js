@@ -53,17 +53,23 @@ const TABS = [
 
 const PAGE_SIZE = 10;
 
-// Audio & Haptics
+// Audio & Haptics (Safe User-Gesture Check)
 const playSound = () => {
   try {
-    const audio = new Audio("/forward.mp3");
-    audio.play().catch(() => {});
+    if (typeof window !== "undefined") {
+      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+      const audio = new Audio("/forward.mp3");
+      audio.play().catch(() => {});
+    }
   } catch {}
 };
 
 const vibrate = (pattern = [50, 30, 50]) => {
   try {
-    if (typeof navigator !== "undefined" && navigator.vibrate) {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+        return;
+      }
       navigator.vibrate(pattern);
     }
   } catch {}
@@ -102,14 +108,7 @@ function timeAgo(dateStr) {
 }
 
 export default function TechCalls() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const id = localStorage.getItem("userId");
-      const username = localStorage.getItem("username");
-      if (id || username) return { id, username, role: "technician", name: username };
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
 
   const [tab, setTab] = useState("Pending");
   const [page, setPage] = useState(1);
@@ -130,8 +129,14 @@ export default function TechCalls() {
   const [updatingId, setUpdatingId] = useState(null);
   const [detailModalCall, setDetailModalCall] = useState(null);
 
-  // Background User Validation
+  // Background User Validation with Safe Client Hydration
   useEffect(() => {
+    const id = localStorage.getItem("userId");
+    const username = localStorage.getItem("username");
+    if (id || username) {
+      setUser({ id, username, role: "technician", name: username });
+    }
+
     (async () => {
       try {
         const res = await fetch("/api/auth/me");
@@ -171,21 +176,27 @@ export default function TechCalls() {
         const res = await fetch(`/api/tech/my-calls?${params.toString()}`);
         const data = await res.json().catch(() => ({}));
 
-        if (data.success && Array.isArray(data.items)) {
-          const cacheKey = `${tab}_${page}`;
-          tabCacheRef.current[cacheKey] = data;
+        if (res.ok && data.success) {
+          const items = Array.isArray(data.items) ? data.items : [];
+          setCalls(items);
+          setTotalPages(data.totalPages || 1);
+          setTotalCount(data.totalCount || items.length);
 
-          setCalls(data.items);
-          if (data.totalPages !== undefined) setTotalPages(data.totalPages || 1);
-          if (data.totalCount !== undefined) setTotalCount(data.totalCount || 0);
           if (data.counts) {
             setGlobalCounts(data.counts);
           }
-        }
 
-        if (showNotify) {
-          toast.success("Calls Refreshed");
-          vibrate([30]);
+          // Cache current tab & page results in memory
+          tabCacheRef.current[`${tab}_${page}`] = {
+            items,
+            totalPages: data.totalPages || 1,
+            totalCount: data.totalCount || items.length,
+            counts: data.counts || null,
+          };
+
+          if (showNotify) {
+            toast.success("Calls updated", { id: "refresh-toast" });
+          }
         }
       } catch (err) {
         console.error("fetch calls err:", err);
@@ -194,62 +205,74 @@ export default function TechCalls() {
         setRefreshing(false);
       }
     },
-    [user, tab, page]
+    [tab, page]
   );
 
   useEffect(() => {
-    if (user) {
-      const cacheKey = `${tab}_${page}`;
-      if (tabCacheRef.current[cacheKey]) {
-        const cached = tabCacheRef.current[cacheKey];
-        setCalls(cached.items || []);
-        if (cached.totalPages !== undefined) setTotalPages(cached.totalPages || 1);
-        if (cached.totalCount !== undefined) setTotalCount(cached.totalCount || 0);
-        if (cached.counts) setGlobalCounts(cached.counts);
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
-      fetchCalls();
+    const cacheKey = `${tab}_${page}`;
+    if (tabCacheRef.current[cacheKey]) {
+      const cached = tabCacheRef.current[cacheKey];
+      setCalls(cached.items || []);
+      if (cached.totalPages !== undefined) setTotalPages(cached.totalPages || 1);
+      if (cached.totalCount !== undefined) setTotalCount(cached.totalCount || 0);
+      if (cached.counts) setGlobalCounts(cached.counts);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
-  }, [user, tab, page, fetchCalls]);
+    fetchCalls();
+  }, [tab, page, fetchCalls]);
 
-  // Firestore Realtime Listener
+  // Realtime Firestore Socket Listener & Background Live Polling
   useEffect(() => {
-    if (!user) return;
-    const identifier = user.id || user._id || user.username;
-    if (!identifier) return;
-
     let unsub = () => {};
-    try {
-      const q1 = fsQuery(
-        collection(db, "forwarded_calls"),
-        where("techId", "==", String(identifier)),
-        orderBy("createdAt", "desc"),
-        limit(PAGE_SIZE)
-      );
+    if (user) {
+      const identifier = user.id || user._id || user.username;
+      if (identifier) {
+        let isInitialSnapshot = true;
+        try {
+          const q1 = fsQuery(
+            collection(db, "forwarded_calls"),
+            where("techId", "==", String(identifier)),
+            limit(PAGE_SIZE)
+          );
 
-      unsub = onSnapshot(
-        q1,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const hasNew = snapshot.docChanges().some((c) => c.type === "added");
-            if (hasNew) {
-              playSound();
-              vibrate([80, 40, 80]);
+          unsub = onSnapshot(
+            q1,
+            (snapshot) => {
+              if (isInitialSnapshot) {
+                isInitialSnapshot = false;
+                return;
+              }
+
+              if (!snapshot.empty) {
+                const hasNew = snapshot.docChanges().some((c) => c.type === "added");
+                if (hasNew) {
+                  playSound();
+                  vibrate([80, 40, 80]);
+                }
+                fetchCalls(false);
+              }
+            },
+            () => {
+              fetchCalls(false);
             }
-            fetchCalls();
-          }
-        },
-        () => {
-          fetchCalls();
+          );
+        } catch {
+          fetchCalls(false);
         }
-      );
-    } catch {
-      fetchCalls();
+      }
     }
 
-    return () => unsub();
+    // Auto-polling interval every 7s for 100% reliable live updates
+    const pollInterval = setInterval(() => {
+      fetchCalls(false);
+    }, 7000);
+
+    return () => {
+      unsub();
+      clearInterval(pollInterval);
+    };
   }, [user, fetchCalls]);
 
   // Memoized Handlers for 0ms Zero-Lag Tab Switching

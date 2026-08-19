@@ -70,14 +70,7 @@ function getInitials(name) {
 }
 
 export default function Payments() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const id = localStorage.getItem("userId");
-      const username = localStorage.getItem("username");
-      if (id || username) return { id, username, role: "technician", name: username };
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -443,10 +436,6 @@ export default function Payments() {
 
     setSelectedCalls(newSelected);
     setCallModalOpen(false);
-
-    if (!form.receiver && newSelected.length > 0) {
-      setForm((prev) => ({ ...prev, receiver: newSelected[0].clientName || "" }));
-    }
 
     toast.success(`${newSelected.length} call(s) selected`);
   };

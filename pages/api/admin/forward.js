@@ -10,7 +10,7 @@ export const config = {
 
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
-import { sendNotification } from "../../../lib/firebaseAdmin.js";
+import { sendNotification, syncFirestoreCall } from "../../../lib/firebaseAdmin.js";
 import { delPattern } from "../../../lib/redis.js";
 
 // ------------ WhatsApp Sender (NON-BLOCKING) ------------
@@ -129,6 +129,14 @@ async function forwardCore(req, res, user) {
     // ⭐ Background Tasks (NON-BLOCKING)
     setImmediate(async () => {
       try {
+        // 0. Live Socket Broadcast to Technician Devices via Firestore
+        syncFirestoreCall(insertedId, {
+          ...insertDoc,
+          _id: String(insertedId),
+          techId: String(tech._id),
+          techName: tech.name || tech.username || "Technician",
+        }).catch(() => {});
+
         // 1. WhatsApp Notification (if CHIMNEY_SOLUTIONS chosen)
         if (chooseCall === "CHIMNEY_SOLUTIONS") {
           try {

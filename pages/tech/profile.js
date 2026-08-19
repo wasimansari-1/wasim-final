@@ -9,14 +9,7 @@ import { FiCamera, FiTrash2, FiAward, FiDollarSign, FiPhoneCall, FiStar, FiCalen
 import toast from "react-hot-toast";
 
 export default function Profile() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const id = localStorage.getItem("userId");
-      const username = localStorage.getItem("username");
-      if (id || username) return { id, username, role: "technician", name: username };
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [avatar, setAvatar] = useState(null);
   const [avatarPublicId, setAvatarPublicId] = useState(null);
   const [calls, setCalls] = useState([]);

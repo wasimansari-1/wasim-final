@@ -616,21 +616,21 @@ export default function Payments() {
                 </div>
 
                 {/* Payment Meta */}
-                <div className="grid md:grid-cols-3 gap-3 text-xs sm:text-sm text-slate-700">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs sm:text-sm text-slate-700">
                   <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3">
                     <div className="text-[11px] text-slate-500 mb-1">
                       Technician
                     </div>
-                    <div className="font-semibold text-slate-900">
+                    <div className="font-semibold text-slate-900 truncate">
                       {viewItem.techUsername}
                     </div>
                   </div>
                   <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3">
                     <div className="text-[11px] text-slate-500 mb-1">
-                      Paying Name
+                      Paying Person Name
                     </div>
-                    <div className="font-semibold text-slate-900">
-                      {viewItem.receiver}
+                    <div className="font-semibold text-slate-900 truncate">
+                      {viewItem.receiver || "—"}
                     </div>
                   </div>
                   <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3">
@@ -642,6 +642,48 @@ export default function Payments() {
                       {viewItem.calls?.length === 1 ? "" : "s"}
                     </div>
                   </div>
+                  <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3">
+                    <div className="text-[11px] text-slate-500 mb-1">
+                      Payment Mode
+                    </div>
+                    <div className="font-semibold text-slate-900">
+                      {viewItem.mode || "Split"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✍️ Receiver Digital Signature Preview */}
+                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-3 sm:p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-semibold text-slate-900">
+                        ✍️ Receiver / Payer Signature
+                      </span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">
+                        Payment Signed
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      Captured during payment collection
+                    </span>
+                  </div>
+
+                  {viewItem.receiverSignature || viewItem.signature || viewItem.receiverSignUrl || viewItem.signUrl ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col items-center justify-center min-h-[100px] shadow-sm">
+                      <img
+                        src={viewItem.receiverSignature || viewItem.signature || viewItem.receiverSignUrl || viewItem.signUrl}
+                        alt="Receiver Signature"
+                        className="max-h-28 sm:max-h-36 w-auto object-contain select-none"
+                      />
+                      <div className="text-[10px] text-slate-400 mt-2 font-mono">
+                        Digital Signature of {viewItem.receiver || "Receiver"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-6 text-center text-slate-400 text-xs">
+                      No digital signature was uploaded for this payment record.
+                    </div>
+                  )}
                 </div>
 
                 {/* Call breakdown heading */}

@@ -1,6 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
-import { sendNotification } from "../../../lib/firebaseAdmin.js";
+import { sendNotification, syncFirestoreCall } from "../../../lib/firebaseAdmin.js";
 import { delPattern } from "../../../lib/redis.js";
 
 function safeParseBody(body) {
@@ -13,76 +13,103 @@ export default requireRole("admin")(async (req, res) => {
 
   try {
     const db = await getDb();
-    const { callId, newTech } = safeParseBody(req.body) || {};
+    const body = safeParseBody(req.body) || {};
+    const callId = body.callId || body._id || body.id;
+    const newTech = body.newTech || body.techId || body.newTechId;
 
     if (!callId || !newTech)
-      return res.status(400).json({ error: "Missing required fields" });
+      return res.status(400).json({ error: "Missing required fields (callId and newTech)" });
 
-    const callObjId = new ObjectId(callId);
+    let callObjId = null;
+    if (ObjectId.isValid(callId)) {
+      callObjId = new ObjectId(callId);
+    }
 
     // ⭐ Fetch existing call
-    const call = await db.collection("forwarded_calls").findOne({ _id: callObjId });
+    const call = await db.collection("forwarded_calls").findOne({
+      $or: [{ _id: callObjId }, { _id: String(callId) }].filter(Boolean),
+    });
+
     if (!call)
       return res.status(404).json({ error: "Call not found in forwarded_calls" });
 
     const oldTechId = call.techId || call.technicianId || null;
 
     // ⭐ Fetch new technician data
-    const newTechData = await db
-      .collection("technicians")
-      .findOne({ _id: new ObjectId(newTech) });
+    let newTechObjId = null;
+    if (ObjectId.isValid(newTech)) {
+      newTechObjId = new ObjectId(newTech);
+    }
+
+    const newTechData = await db.collection("technicians").findOne({
+      $or: [{ _id: newTechObjId }, { _id: String(newTech) }, { username: String(newTech) }].filter(Boolean),
+    });
 
     if (!newTechData)
       return res.status(404).json({ error: "Technician not found" });
 
     const newTechName =
-      newTechData.username ||
-      newTechData.name ||
-      newTechData.fullName ||
-      newTechData.techName ||
+      (newTechData.name && newTechData.name.trim()) ||
+      (newTechData.fullName && newTechData.fullName.trim()) ||
+      (newTechData.techName && newTechData.techName.trim()) ||
+      (newTechData.username && newTechData.username.trim()) ||
       "Technician";
 
     // ⭐ Update call with new technician + name
     await db.collection("forwarded_calls").updateOne(
-      { _id: callObjId },
+      { _id: call._id },
       {
         $set: {
-          techId: new ObjectId(newTech),
-          technicianId: new ObjectId(newTech),
+          techId: newTechData._id,
+          technicianId: newTechData._id,
           techName: newTechName,
           updatedAt: new Date(),
         }
       }
     );
 
-    // ⭐ Remove from old technician
+    // ⭐ Remove from old technician's list
     if (oldTechId) {
+      const oldTechObjId = ObjectId.isValid(oldTechId) ? new ObjectId(oldTechId) : oldTechId;
       await db.collection("technicians").updateOne(
-        { _id: new ObjectId(oldTechId) },
-        { $pull: { assignedCalls: callId } }
+        { $or: [{ _id: oldTechObjId }, { _id: String(oldTechId) }] },
+        { $pull: { assignedCalls: { $in: [String(callId), callObjId, call._id, String(call._id)].filter(Boolean) } } }
       ).catch(() => {});
     }
 
-    // ⭐ Add to new technician
+    // ⭐ Add to new technician's list
     await db.collection("technicians").updateOne(
-      { _id: new ObjectId(newTech) },
-      { $addToSet: { assignedCalls: callId } }
+      { _id: newTechData._id },
+      { $addToSet: { assignedCalls: String(call._id) } }
     ).catch(() => {});
 
-    // Invalidate Redis caches
-    delPattern("tech:calls:*").catch(() => {});
-    delPattern("admin:summary:*").catch(() => {});
+    // ⭐ Invalidate ALL Redis caches
+    await Promise.all([
+      delPattern("admin:calls:*").catch(() => {}),
+      delPattern("tech:calls:*").catch(() => {}),
+      delPattern("admin:summary:*").catch(() => {}),
+      delPattern("admin:technician-calls:*").catch(() => {}),
+      delPattern("admin:customer-payments:*").catch(() => {}),
+      delPattern("admin:payments:*").catch(() => {}),
+    ]);
 
     // ⭐ Immediate response
     res.status(200).json({
       success: true,
       message: "Technician updated successfully",
-      techName: newTechName
+      techName: newTechName,
+      techId: String(newTechData._id),
     });
 
-    // ⭐ Background notification to new technician
+    // ⭐ Background notification to new technician + live socket broadcast
     setImmediate(async () => {
       try {
+        // 0. Live Firestore socket broadcast
+        syncFirestoreCall(call._id, {
+          techId: String(newTechData._id),
+          techName: newTechName,
+        }).catch(() => {});
+
         const tokenDocs = await db.collection("fcm_tokens").find({
           $or: [
             { userId: String(newTechData._id) },
@@ -109,7 +136,7 @@ export default requireRole("admin")(async (req, res) => {
             `📞 ${newTechName} - Call Reassigned`,
             `Assigned to: ${newTechName} | Client: ${call.clientName || "Client"} (${call.phone || ""})`,
             {
-              forwardedCallId: callId,
+              forwardedCallId: String(call._id),
               clientName: call.clientName || "",
               phone: call.phone || "",
               techName: newTechName,
@@ -125,7 +152,7 @@ export default requireRole("admin")(async (req, res) => {
           techId: String(newTechData._id),
           title: `📞 ${newTechName} - Call Reassigned`,
           message: `Assigned to ${newTechName}: Client ${call.clientName || ""} (${call.phone || ""})`,
-          data: { forwardedCallId: callId, url: "/tech/calls" },
+          data: { forwardedCallId: String(call._id), url: "/tech/calls" },
           createdAt: new Date(),
           read: false,
         }).catch(() => {});
@@ -136,7 +163,7 @@ export default requireRole("admin")(async (req, res) => {
     });
 
   } catch (err) {
-    console.error("CHANGE TECH ERROR:", err);
+    console.error("❌ REASSIGN ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });

@@ -9,18 +9,18 @@ export default async function handler(req, res) {
     const { token, title, body, url = "/tech/calls", data = {} } = req.body || {};
 
     if (!token) {
-      return res.status(400).json({ error: "Missing token" });
+      return res.status(200).json({ success: false, message: "No token provided" });
     }
 
     const sent = await sendNotification(token, title, body, data, url);
 
-    if (sent) {
-      return res.status(200).json({ success: true, message: "Notification sent successfully" });
-    } else {
-      return res.status(500).json({ success: false, error: "Failed to deliver push notification" });
-    }
+    return res.status(200).json({
+      success: true,
+      delivered: Boolean(sent),
+      message: sent ? "Notification sent successfully" : "Device unreachable or token refreshed",
+    });
   } catch (err) {
-    console.error("❌ Notification error:", err);
-    return res.status(500).json({ error: err.message || "Internal server error" });
+    console.warn("⚠️ Notification warning:", err?.message || err);
+    return res.status(200).json({ success: false, error: err.message || "Push service notice" });
   }
 }

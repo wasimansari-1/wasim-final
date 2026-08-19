@@ -26,14 +26,7 @@ function playSuccessSound() {
 }
 
 export default function TechHome() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const id = localStorage.getItem("userId");
-      const username = localStorage.getItem("username");
-      if (id || username) return { id, username, role: "technician", name: username };
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [isPending, startTransition] = useTransition();
 
   const [loading, setLoading] = useState(false);

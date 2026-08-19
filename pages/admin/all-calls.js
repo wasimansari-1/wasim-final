@@ -103,11 +103,17 @@ export default function AllCalls() {
   }, []);
 
   /* -------------------------------------------------------------
-     DELETE CALL
+     DELETE CALL (OPTIMISTIC + INSTANT UI REMOVAL)
   ------------------------------------------------------------- */
   const deleteCall = async (id) => {
     if (!id) return;
     if (!confirm("Delete this call permanently?")) return;
+
+    // 1. Instant optimistic UI removal
+    setCalls((prev) => prev.filter((c) => getId(c) !== id));
+    if (editData && getId(editData) === id) {
+      setEditData(null);
+    }
 
     try {
       const r = await fetch("/api/admin/delete-call", {
@@ -115,12 +121,13 @@ export default function AllCalls() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Delete failed");
-      toast.success("Call deleted");
+      toast.success("Call deleted permanently");
       fetchData({});
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to delete call");
+      fetchData({});
     }
   };
 
@@ -150,25 +157,42 @@ export default function AllCalls() {
   };
 
   /* -------------------------------------------------------------
-     CHANGE TECHNICIAN
+     CHANGE TECHNICIAN (OPTIMISTIC + INSTANT UI UPDATE)
   ------------------------------------------------------------- */
   const submitChangeTech = async () => {
-    if (!changeTechData?.callId || !changeTechData?.newTech) return;
+    if (!changeTechData?.callId || !changeTechData?.newTech) {
+      return toast.error("Please select a technician");
+    }
+
+    const { callId, newTech } = changeTechData;
+    const targetTech = techs.find((t) => String(t._id) === String(newTech));
+
+    // 1. Instant optimistic UI update
+    if (targetTech) {
+      setCalls((prev) =>
+        prev.map((c) =>
+          getId(c) === callId
+            ? { ...c, techName: targetTech.name, techId: targetTech._id }
+            : c
+        )
+      );
+    }
+    setChangeTechData(null);
 
     try {
       const r = await fetch("/api/admin/change-tech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changeTechData),
+        body: JSON.stringify({ callId, newTech }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Change tech failed");
 
       toast.success("Technician reassigned & notified 🔔");
-      setChangeTechData(null);
       fetchData({});
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to reassign technician");
+      fetchData({});
     }
   };
 
@@ -555,12 +579,28 @@ export default function AllCalls() {
               </div>
             </div>
 
-            <button
-              onClick={saveEdit}
-              className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] transition shadow-md"
-            >
-              Save Changes
-            </button>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const id = getId(editData);
+                  if (id) {
+                    deleteCall(id);
+                  }
+                }}
+                className="px-4 py-3 rounded-xl text-sm font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <FiTrash size={15} />
+                <span>Delete</span>
+              </button>
+
+              <button
+                onClick={saveEdit}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] transition shadow-md cursor-pointer"
+              >
+                Save Changes
+              </button>
+            </div>
           </div>
         </div>
       )}

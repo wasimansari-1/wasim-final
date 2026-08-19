@@ -22,15 +22,7 @@ import PaymentPopup from "../../components/admin/PaymentPopup";
 import CustomNotificationModal from "../../components/admin/CustomNotificationModal";
 
 export default function AdminHome() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const id = localStorage.getItem("userId");
-      const username = localStorage.getItem("username");
-      const role = localStorage.getItem("userRole");
-      if (role === "admin") return { id, username, role: "admin", name: username };
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [notifications, setNotifications] = useState([]);
