@@ -1,5 +1,6 @@
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import bcrypt from "bcryptjs";
+import { delPattern } from "../../../lib/redis.js";
 
 async function handler(req, res, user) {
   if (req.method !== "POST") return res.status(405).end();
@@ -28,6 +29,8 @@ async function handler(req, res, user) {
   };
 
   const r = await db.collection("technicians").insertOne(insertDoc);
+  delPattern("admin:techs:*").catch(() => {});
+
   return res.json({ ok: true, id: r.insertedId.toString(), message: "Technician created successfully" });
 }
 

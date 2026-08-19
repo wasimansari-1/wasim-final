@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
+import { delPattern } from "../../../lib/redis.js";
 
 export default requireRole("admin")(async (req, res) => {
   if (req.method !== "POST")
@@ -54,6 +55,11 @@ export default requireRole("admin")(async (req, res) => {
       { _id: callId },
       { $set: updateDoc }
     );
+
+    // Invalidate Redis caches
+    delPattern("admin:calls:*").catch(() => {});
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
 
     return res.json({ success: true, message: "Call updated" });
   } catch (err) {

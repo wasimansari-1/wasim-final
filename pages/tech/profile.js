@@ -33,43 +33,50 @@ export default function Profile() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       try {
-        const me = await fetch("/api/auth/me", { credentials: "same-origin" });
-        if (!me.ok) return (window.location.href = "/login");
-        const u = await me.json();
-        if (u.role !== "technician") return (window.location.href = "/login");
-        setUser(u);
-        setAvatar(u.avatar || null);
-        setAvatarPublicId(u.avatarPublicId || null);
+        const [meRes, profRes, callsRes] = await Promise.all([
+          fetch("/api/auth/me", { credentials: "same-origin" }).catch(() => null),
+          fetch("/api/tech/profile", { credentials: "same-origin" }).catch(() => null),
+          fetch("/api/tech/my-calls?pageSize=1000", { credentials: "same-origin" }).catch(() => null),
+        ]);
 
-        // Fetch fresh profile from DB
-        try {
-          const profRes = await fetch("/api/tech/profile", { credentials: "same-origin" });
-          if (profRes.ok) {
-            const profData = await profRes.json();
-            if (profData.avatar) setAvatar(profData.avatar);
-            if (profData.avatarPublicId) setAvatarPublicId(profData.avatarPublicId);
+        if (!meRes || !meRes.ok) {
+          window.location.href = "/login";
+          return;
+        }
+
+        const u = await meRes.json();
+        if (u.role !== "technician") {
+          window.location.href = "/login";
+          return;
+        }
+
+        if (isMounted) {
+          setUser(u);
+          setAvatar(u.avatar || null);
+          setAvatarPublicId(u.avatarPublicId || null);
+
+          if (profRes && profRes.ok) {
+            const profData = await profRes.json().catch(() => null);
+            if (profData?.avatar) setAvatar(profData.avatar);
+            if (profData?.avatarPublicId) setAvatarPublicId(profData.avatarPublicId);
           }
-        } catch (e) {
-          console.warn("Could not fetch extra profile data:", e);
+
+          if (callsRes && callsRes.ok) {
+            const d = await callsRes.json().catch(() => ({ items: [] }));
+            setCalls(d.items || []);
+          }
         }
       } catch {
-        window.location.href = "/login";
+        if (isMounted) window.location.href = "/login";
       }
     })();
-  }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/tech/my-calls?pageSize=1000", { credentials: "same-origin" });
-        const d = await r.json();
-        setCalls(d.items || []);
-      } catch {
-        setCalls([]);
-      }
-    })();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {

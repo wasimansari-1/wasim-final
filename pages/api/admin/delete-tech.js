@@ -1,5 +1,6 @@
 import { getDb, requireRole } from "../../../lib/api-helpers";
 import { ObjectId } from "mongodb";
+import { delPattern } from "../../../lib/redis.js";
 
 async function handler(req, res) {
   if (req.method !== "DELETE")
@@ -14,6 +15,7 @@ async function handler(req, res) {
     const db = await getDb();
 
     await db.collection("technicians").deleteOne({ _id: new ObjectId(id) });
+    delPattern("admin:techs:*").catch(() => {});
 
     return res.json({ success: true });
   } catch (err) {

@@ -1,4 +1,5 @@
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 function normalize(str = "") {
   return String(str).toLowerCase().replace(/\s+/g, " ").trim();
@@ -10,34 +11,38 @@ async function handler(req, res, user) {
   }
 
   try {
+    const cacheKey = "admin:customer-payments:list";
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cachedData);
+    }
+
     const db = await getDb();
     const callsColl = db.collection("forwarded_calls");
     const paymentsColl = db.collection("payments");
 
-    // 🔹 1. ALL CALLS (LIFETIME)
-    const calls = await callsColl.find({}).toArray();
+    // Fetch calls and payments in parallel
+    const [calls, payments] = await Promise.all([
+      callsColl.find({}).sort({ createdAt: -1 }).toArray(),
+      paymentsColl.find({}).toArray(),
+    ]);
 
-    // 🔹 2. ALL PAYMENTS (LIFETIME)
-    const payments = await paymentsColl.find({}).toArray();
-
-    // 🔹 3. BUILD PAYMENT MATCH SET
+    // Build payment match set
     const paidSet = new Set();
-
     for (const p of payments) {
       if (!Array.isArray(p.calls)) continue;
-
       for (const c of p.calls) {
         const key = [
           normalize(c.clientName),
           normalize(c.phone),
           normalize(c.address),
         ].join("|");
-
         paidSet.add(key);
       }
     }
 
-    // 🔹 4. FINAL CUSTOMER LIST
+    // Final customer list
     const result = calls.map((c) => {
       const key = [
         normalize(c.clientName),
@@ -58,19 +63,21 @@ async function handler(req, res, user) {
       };
     });
 
-    return res.json({
+    const responsePayload = {
       success: true,
-      totalCustomers: result.length,
-      paidCount: result.filter((r) => r.status === "Paid").length,
-      pendingCount: result.filter((r) => r.status === "Pending").length,
-      items: result,
-    });
+      total: result.length,
+      paid: result.filter((x) => x.status === "Paid").length,
+      pending: result.filter((x) => x.status === "Pending").length,
+      customers: result,
+    };
+
+    await setCache(cacheKey, responsePayload, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(responsePayload);
+
   } catch (err) {
-    console.error("admin customer payments error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Internal Server Error",
-    });
+    console.error("CUSTOMER PAYMENTS ERROR:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
   }
 }
 

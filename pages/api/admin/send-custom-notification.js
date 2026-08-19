@@ -81,17 +81,23 @@ export default requireRole("admin")(async (req, res, adminUser) => {
     let successCount = 0;
     let failureCount = 0;
 
+    const finalTitle =
+      target === "specific" && targetDescription && !title.toLowerCase().includes(targetDescription.toLowerCase())
+        ? `🔔 ${targetDescription} - ${title.trim()}`
+        : title.trim();
+
     // Send push notifications in parallel with limit
     await Promise.all(
       tokens.map(async (token) => {
         try {
           const sent = await sendNotification(
             token,
-            title.trim(),
+            finalTitle,
             body.trim(),
             {
               type: "custom_admin_broadcast",
               sender: "Admin",
+              techName: targetDescription,
               url: url || "/tech/calls",
               sentAt: new Date().toISOString(),
             },

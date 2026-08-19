@@ -11,6 +11,7 @@ export const config = {
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
 import { sendNotification } from "../../../lib/firebaseAdmin.js";
+import { delPattern } from "../../../lib/redis.js";
 
 // ------------ WhatsApp Sender (NON-BLOCKING) ------------
 async function sendWhatsAppMessage(phone, clientName, serviceType) {
@@ -117,6 +118,11 @@ async function forwardCore(req, res, user) {
       { $addToSet: { assignedCalls: insertedId } }
     ).catch(() => {});
 
+    // Invalidate Redis cache for technician calls & admin stats
+    delPattern(`tech:calls:${tech._id}:*`).catch(() => {});
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
+
     // ⭐ ULTRA FAST RESPONSE — return immediately
     res.status(200).json({ ok: true, id: insertedId });
 
@@ -156,17 +162,24 @@ async function forwardCore(req, res, user) {
             (t) => typeof t === "string" && t.trim().length > 20
           );
 
+          const techDisplayName = (tech.name && tech.name.trim()) ||
+            (tech.fullName && tech.fullName.trim()) ||
+            (tech.techName && tech.techName.trim()) ||
+            (tech.username && tech.username.trim()) ||
+            "Technician";
+
           if (allTokens.length > 0) {
-            console.log(`📱 Dispatching push to ${allTokens.length} device(s) for ${tech.username}`);
+            console.log(`📱 Dispatching push to ${allTokens.length} device(s) for ${techDisplayName}`);
             for (const token of allTokens) {
               await sendNotification(
                 token,
-                "📞 New Call Assigned",
-                `Client ${clientName} (${insertDoc.phone}) assigned to you. Price: ₹${insertDoc.price}`,
+                `📞 ${techDisplayName} - New Call Assigned`,
+                `Assigned to: ${techDisplayName} | Client: ${clientName} (${insertDoc.phone}) | ₹${insertDoc.price}`,
                 {
                   forwardedCallId: insertedId,
                   clientName: insertDoc.clientName,
                   phone: insertDoc.phone,
+                  techName: techDisplayName,
                   url: "/tech/calls",
                   click_action: "/tech/calls",
                 },
@@ -174,15 +187,15 @@ async function forwardCore(req, res, user) {
               );
             }
           } else {
-            console.warn("⚠️ No active device push token registered for technician:", tech.username);
+            console.warn("⚠️ No active device push token registered for technician:", techDisplayName);
           }
 
           // 3. Log notification in DB for technician history
           await db.collection("notifications").insertOne({
             to: tech.username || String(tech._id),
             techId: String(tech._id),
-            title: "📞 New Call Assigned",
-            message: `New call: ${clientName} (${insertDoc.phone})`,
+            title: `📞 ${techDisplayName} - New Call Assigned`,
+            message: `Assigned to ${techDisplayName}: ${clientName} (${insertDoc.phone}) - ₹${insertDoc.price}`,
             data: { forwardedCallId: insertedId, url: "/tech/calls" },
             createdAt: new Date(),
             read: false,

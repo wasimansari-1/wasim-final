@@ -2,6 +2,7 @@
 import fetch from "node-fetch";
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
+import { delPattern } from "../../../lib/redis.js";
 
 export const config = {
   api: {
@@ -47,25 +48,26 @@ async function sendCompletionMessage(phone, clientName, serviceType, techName) {
 
 // -------- Main Handler --------
 async function handler(req, res, user) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", ["POST"]);
-    return res.status(405).json({ ok: false, message: "Method Not Allowed" });
+  if (req.method !== "POST" && req.method !== "PUT") {
+    res.setHeader("Allow", ["POST", "PUT"]);
+    return res.status(405).json({ ok: false, success: false, message: "Method Not Allowed" });
   }
 
   try {
-    const { id, status, notes = "" } = req.body || {};
+    const rawId = req.body?.id || req.body?.callId;
+    const { status, notes = "" } = req.body || {};
 
-    if (!id || !status) {
-      return res.status(400).json({ ok: false, message: "id and status are required." });
+    if (!rawId || !status) {
+      return res.status(400).json({ ok: false, success: false, message: "id/callId and status are required." });
     }
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ ok: false, message: "Invalid id." });
+    if (!ObjectId.isValid(rawId)) {
+      return res.status(400).json({ ok: false, success: false, message: "Invalid call id." });
     }
     if (!ALLOWED.has(String(status))) {
-      return res.status(400).json({ ok: false, message: "Invalid status value." });
+      return res.status(400).json({ ok: false, success: false, message: "Invalid status value." });
     }
 
-    const _id = new ObjectId(id);
+    const _id = new ObjectId(rawId);
 
     // techIdCandidates ensures technicians can update their own calls
     const techIdCandidates = [user.id];
@@ -119,9 +121,15 @@ async function handler(req, res, user) {
       return res.status(404).json({ ok: false, message: "Call not found." });
     }
 
+    // Invalidate Redis cache for technician calls & admin dashboards
+    delPattern(`tech:calls:${user.id}:*`).catch(() => {});
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
+
     // Respond immediately for ultra snappy UI
     res.status(200).json({
       ok: true,
+      success: true,
       modified: result.modifiedCount === 1,
       closedAt: (String(status) === "Closed" || String(status) === "Completed") ? now : null,
       closedByName: user.username || callData.techName,

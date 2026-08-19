@@ -1,8 +1,16 @@
 // pages/api/admin/backup/stats.js
 import { requireRole, getDb } from "../../../../lib/api-helpers.js";
+import { getCache, setCache } from "../../../../lib/redis.js";
 
 async function handler(req, res, user) {
   try {
+    const cacheKey = "admin:backup:stats";
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cachedData);
+    }
+
     const db = await getDb();
 
     const [
@@ -21,7 +29,7 @@ async function handler(req, res, user) {
       db.collection("whatsapp_report_logs").countDocuments(),
     ]);
 
-    return res.json({
+    const result = {
       ok: true,
       success: true,
       stats: {
@@ -40,7 +48,11 @@ async function handler(req, res, user) {
           whatsappLogsCount,
       },
       lastChecked: new Date(),
-    });
+    };
+
+    await setCache(cacheKey, result, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(result);
   } catch (err) {
     console.error("Backup stats error:", err);
     return res.status(500).json({ ok: false, error: err.message });

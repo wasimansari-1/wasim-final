@@ -588,13 +588,14 @@ export default function Payments() {
         toast.success("✅ Payment recorded successfully");
 
         if (deviceToken) {
+          const techDisplayName = user?.name || user?.username || "Technician";
           fetch("/api/sendNotification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               token: deviceToken,
-              title: "New Payment Recorded 💰",
-              body: `${form.receiver} paid ₹${totalCombined} (${mode})`,
+              title: `💰 ${techDisplayName} - Payment Recorded`,
+              body: `${techDisplayName} recorded ₹${totalCombined} (${mode}) from ${form.receiver}`,
             }),
           }).catch(() => {});
         }

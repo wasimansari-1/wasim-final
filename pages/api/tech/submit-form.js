@@ -1,6 +1,7 @@
 // pages/api/tech/submit-form.js
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
+import { delPattern } from "../../../lib/redis.js";
 
 function normalizePhone(p) {
   if (p == null) return "";
@@ -129,6 +130,10 @@ async function handler(req, res, user) {
     }
 
     res.setHeader("Cache-Control", "private, no-store");
+
+    // Invalidate Redis caches
+    delPattern("admin:forms:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
 
     let insertedId = "";
     if (result.upsertedId) {

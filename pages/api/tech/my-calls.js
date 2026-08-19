@@ -1,6 +1,7 @@
 // pages/api/tech/my-calls.js
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 /**
  * Returns forwarded calls for the logged-in technician.
@@ -29,6 +30,15 @@ async function handler(req, res, user) {
 
     const ALLOWED_TABS = new Set(["All Calls", "Today Calls", "Pending", "Closed", "Canceled"]);
     if (!ALLOWED_TABS.has(tab)) tab = "All Calls";
+
+    // ⚡ Redis Cache Check
+    const cacheKey = `tech:calls:${user.id}:${tab}:${page}:${pageSize}`;
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      res.setHeader("X-Cache", "HIT");
+      res.setHeader("Cache-Control", "private, no-cache");
+      return res.status(200).json(cachedData);
+    }
 
     const db = await getDb();
     const forwardedColl = db.collection("forwarded_calls");
@@ -195,8 +205,7 @@ async function handler(req, res, user) {
       };
     });
 
-    res.setHeader("Cache-Control", "private, no-store");
-    return res.status(200).json({
+    const responsePayload = {
       success: true,
       items,
       page,
@@ -210,7 +219,13 @@ async function handler(req, res, user) {
         closed: totalClosed,
         canceled: totalCanceled,
       },
-    });
+    };
+
+    await setCache(cacheKey, responsePayload, 60);
+
+    res.setHeader("X-Cache", "MISS");
+    res.setHeader("Cache-Control", "private, no-cache");
+    return res.status(200).json(responsePayload);
   } catch (err) {
     console.error("my-calls error:", err);
     return res.status(500).json({ success: false, error: "Internal Server Error" });

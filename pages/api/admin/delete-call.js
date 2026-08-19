@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
+import { delPattern } from "../../../lib/redis.js";
 
 function safeParseBody(body) {
   try { return typeof body === "string" ? JSON.parse(body) : body; } catch { return body; }
@@ -41,6 +42,10 @@ export default requireRole("admin")(async (req, res) => {
     await db.collection("forwarded_calls").deleteOne({
       _id: callObjId || id
     });
+
+    // Invalidate Redis caches
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
 
     return res.status(200).json({ success: true, message: "Call deleted" });
 

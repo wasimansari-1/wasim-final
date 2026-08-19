@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { getDb, requireRole } from "../../../lib/api-helpers.js";
 import { sendNotification } from "../../../lib/firebaseAdmin.js";
+import { delPattern } from "../../../lib/redis.js";
 
 function safeParseBody(body) {
   try { return typeof body === "string" ? JSON.parse(body) : body; } catch { return body; }
@@ -68,6 +69,10 @@ export default requireRole("admin")(async (req, res) => {
       { $addToSet: { assignedCalls: callId } }
     ).catch(() => {});
 
+    // Invalidate Redis caches
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
+
     // ⭐ Immediate response
     res.status(200).json({
       success: true,
@@ -91,12 +96,13 @@ export default requireRole("admin")(async (req, res) => {
         for (const token of tokens) {
           await sendNotification(
             token,
-            "📞 Call Reassigned to You",
-            `Client ${call.clientName || "Client"} (${call.phone || ""}) has been reassigned to you.`,
+            `📞 ${newTechName} - Call Reassigned`,
+            `Assigned to: ${newTechName} | Client: ${call.clientName || "Client"} (${call.phone || ""})`,
             {
               forwardedCallId: callId,
               clientName: call.clientName || "",
               phone: call.phone || "",
+              techName: newTechName,
               url: "/tech/calls",
             },
             "/tech/calls"
@@ -107,8 +113,8 @@ export default requireRole("admin")(async (req, res) => {
         await db.collection("notifications").insertOne({
           to: newTechData.username || String(newTechData._id),
           techId: String(newTechData._id),
-          title: "📞 Call Reassigned",
-          message: `Client ${call.clientName || ""} assigned to you.`,
+          title: `📞 ${newTechName} - Call Reassigned`,
+          message: `Assigned to ${newTechName}: Client ${call.clientName || ""} (${call.phone || ""})`,
           data: { forwardedCallId: callId, url: "/tech/calls" },
           createdAt: new Date(),
           read: false,

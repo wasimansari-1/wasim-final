@@ -1,12 +1,22 @@
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
 import Papa from "papaparse";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 async function handler(req, res, user) {
   try {
-    const db = await getDb();
-
     let { techId = "", range = "today", from = "", to = "", csv = "" } = req.query;
+
+    const cacheKey = `admin:payments:${techId}:${range}:${from}:${to}`;
+    if (csv !== "1") {
+      const cachedData = await getCache(cacheKey);
+      if (cachedData) {
+        res.setHeader("X-Cache", "HIT");
+        return res.json(cachedData);
+      }
+    }
+
+    const db = await getDb();
 
     const match = {};
 
@@ -104,13 +114,20 @@ async function handler(req, res, user) {
     }
 
     // ---------------- RESPONSE ----------------
-    return res.json({
+    const responsePayload = {
       items: items.map((x) => ({
         ...x,
         _id: x._id.toString(),
       })),
       sum,
-    });
+    };
+
+    if (csv !== "1") {
+      await setCache(cacheKey, responsePayload, 60);
+      res.setHeader("X-Cache", "MISS");
+    }
+
+    return res.json(responsePayload);
   } catch (err) {
     console.error("PAYMENT API ERROR:", err);
     return res.status(500).json({ ok: false, error: "Server Error" });

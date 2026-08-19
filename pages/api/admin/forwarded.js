@@ -1,10 +1,9 @@
 // pages/api/admin/forwarded.js
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 async function handler(req, res) {
   try {
-    const db = await getDb();
-
     const {
       q = "",
       status = "",
@@ -12,6 +11,14 @@ async function handler(req, res) {
       limit = 20,
     } = req.query;
 
+    const cacheKey = `admin:calls:${q}:${status}:${page}:${limit}`;
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cachedData);
+    }
+
+    const db = await getDb();
     const match = {};
 
     // 🔍 SEARCH
@@ -28,24 +35,22 @@ async function handler(req, res) {
     if (status) match.status = status;
 
     const coll = db.collection("forwarded_calls");
-
-    // COUNT
-    const total = await coll.countDocuments(match);
-
     const skipCount = (Number(page) - 1) * Number(limit);
 
-    // DATA (newest first, with chronological srNo where oldest = 1)
-    const items = await coll
-      .find(match)
-      .sort({ createdAt: -1 })
-      .skip(skipCount)
-      .limit(Number(limit))
-      .toArray();
+    // Parallel count & find slice
+    const [total, items] = await Promise.all([
+      coll.countDocuments(match),
+      coll
+        .find(match)
+        .sort({ createdAt: -1 })
+        .skip(skipCount)
+        .limit(Number(limit))
+        .toArray(),
+    ]);
 
-    // MORE?
     const hasMore = Number(page) * Number(limit) < total;
 
-    return res.json({
+    const result = {
       success: true,
       total,
       hasMore,
@@ -54,14 +59,15 @@ async function handler(req, res) {
         _id: x._id.toString(),
         srNo: total - (skipCount + idx),
       })),
-    });
+    };
+
+    await setCache(cacheKey, result, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(result);
 
   } catch (err) {
     console.error("API ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Internal server error",
-    });
+    return res.status(500).json({ error: "Server error" });
   }
 }
 

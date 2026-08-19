@@ -18,8 +18,9 @@ export default function BottomNav() {
     (async () => {
       try {
         const res = await fetch("/api/tech/my-calls?tab=Pending&pageSize=1");
-        const data = await res.json();
-        if (data?.total) setPendingCount(data.total);
+        const data = await res.json().catch(() => null);
+        const count = data?.counts?.pending ?? data?.totalCount ?? data?.total ?? 0;
+        setPendingCount(count);
       } catch (e) {}
     })();
   }, [router.pathname]);

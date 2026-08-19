@@ -1,6 +1,7 @@
 // pages/api/tech/payment.js
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
+import { delPattern } from "../../../lib/redis.js";
 
 /** helpers **/
 function safeNumber(v) {
@@ -319,6 +320,12 @@ async function handler(req, res, user) {
         console.error("bulkWrite error:", bulkErr);
       }
     }
+
+    // Invalidate Redis caches
+    delPattern("tech:calls:*").catch(() => {});
+    delPattern("tech:payment-check:*").catch(() => {});
+    delPattern("admin:payments:*").catch(() => {});
+    delPattern("admin:summary:*").catch(() => {});
 
     return res.status(200).json({
       success: true,

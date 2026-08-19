@@ -256,15 +256,15 @@ export default function TechCalls() {
       vibrate([20]);
 
       try {
-        const res = await fetch("/api/tech/calls/status", {
-          method: "PUT",
+        const res = await fetch("/api/tech/update-call", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callId, status: newStatus }),
+          body: JSON.stringify({ id: callId, callId, status: newStatus }),
         });
 
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Failed to update status");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || (!data.ok && !data.success)) {
+          throw new Error(data.message || data.error || "Failed to update status");
         }
 
         toast.success(

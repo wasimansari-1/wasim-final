@@ -1,11 +1,19 @@
 // pages/api/auth/me.js
 import { getUser, getDb } from "../../../lib/api-helpers.js";
 import { ObjectId } from "mongodb";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 export default async function handler(req, res) {
   try {
     const u = getUser(req);
     if (!u) return res.status(401).end();
+
+    const cacheKey = `auth:user:${u.id || u.username}`;
+    const cachedUser = await getCache(cacheKey);
+    if (cachedUser) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cachedUser);
+    }
 
     const db = await getDb();
     let freshUser = { ...u };
@@ -48,6 +56,8 @@ export default async function handler(req, res) {
       }
     }
 
+    await setCache(cacheKey, freshUser, 120);
+    res.setHeader("X-Cache", "MISS");
     return res.json(freshUser);
   } catch (err) {
     console.error("Auth me error:", err);

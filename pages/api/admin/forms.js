@@ -1,5 +1,6 @@
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
 import Papa from "papaparse";
+import { getCache, setCache } from "../../../lib/redis.js";
 
 /* -------------------------------------------------------
    🔍 MATCH FILTER BUILDER
@@ -7,7 +8,6 @@ import Papa from "papaparse";
 function buildMatch({ q, status, tech, dateFrom, dateTo }) {
   const match = {};
 
-  // Search filtering
   if (q) {
     const regex = new RegExp(q, "i");
     match.$or = [
@@ -17,13 +17,9 @@ function buildMatch({ q, status, tech, dateFrom, dateTo }) {
     ];
   }
 
-  // Status filter
   if (status) match.status = status;
-
-  // Technician filter
   if (tech) match.techUsername = tech;
 
-  // Date range filter
   if (dateFrom || dateTo) {
     match.createdAt = {};
     if (dateFrom) match.createdAt.$gte = new Date(dateFrom);
@@ -38,9 +34,6 @@ function buildMatch({ q, status, tech, dateFrom, dateTo }) {
 ------------------------------------------------------- */
 async function handler(req, res, user) {
   try {
-    const db = await getDb();
-    const coll = db.collection("service_forms");
-
     const {
       q = "",
       status = "",
@@ -51,69 +44,68 @@ async function handler(req, res, user) {
       csv,
     } = req.query;
 
+    const cacheKey = `admin:forms:${q}:${status}:${tech}:${dateFrom}:${dateTo}:${page}`;
+
+    if (csv !== "1") {
+      const cachedData = await getCache(cacheKey);
+      if (cachedData) {
+        res.setHeader("X-Cache", "HIT");
+        return res.status(200).json(cachedData);
+      }
+    }
+
+    const db = await getDb();
+    const coll = db.collection("service_forms");
     const match = buildMatch({ q, status, tech, dateFrom, dateTo });
 
     /* -------------------------------------------------------
-       📌 Ensure Indexes
-    ------------------------------------------------------- */
-    coll.createIndex({ createdAt: -1 });
-    coll.createIndex({ clientName: "text", phone: "text", address: "text" });
-    coll.createIndex({ techUsername: 1 });
-    coll.createIndex({ status: 1 });
-
-    /* -------------------------------------------------------
-       📤 CSV EXPORT (SIGNATURE INCLUDED)
+       📤 CSV EXPORT
     ------------------------------------------------------- */
     if (csv === "1") {
       const items = await coll
-        .find(match)     // signature included
+        .find(match)
         .sort({ createdAt: -1 })
         .toArray();
 
       const csvText = Papa.unparse(items, { fastMode: true });
-
-      return res.status(200).json({
-        csv: csvText,
-      });
+      return res.status(200).json({ csv: csvText });
     }
 
     /* -------------------------------------------------------
-       📥 PAGINATED LIST FETCH (SIGNATURE INCLUDED)
+       📥 PAGINATED LIST FETCH
     ------------------------------------------------------- */
     const limit = 20;
     const skip = (Number(page) - 1) * limit;
 
     const [items, total] = await Promise.all([
       coll
-        .find(match)   // signature included
+        .find(match)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .toArray(),
-
       coll.countDocuments(match),
     ]);
 
-    /* -------------------------------------------------------
-       📦 RESPONSE
-    ------------------------------------------------------- */
-    res.setHeader("Cache-Control", "no-store");
-
-    res.status(200).json({
+    const result = {
       items: items.map((x) => ({
         ...x,
         _id: x._id.toString(),
       })),
       total,
-    });
+    };
+
+    if (csv !== "1") {
+      await setCache(cacheKey, result, 60);
+      res.setHeader("X-Cache", "MISS");
+    }
+
+    return res.status(200).json(result);
 
   } catch (err) {
-    console.error("🚨 FastAPI Error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Forms API Error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 }
 
-/* -------------------------------------------------------
-   🚀 EXPORT WITH ADMIN ROLE CHECK
-------------------------------------------------------- */
 export default requireRole("admin")(handler);

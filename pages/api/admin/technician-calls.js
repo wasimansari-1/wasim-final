@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 import { ObjectId } from 'mongodb';
 import { getDb, requireRole } from '../../../lib/api-helpers.js';
+import { getCache, setCache } from '../../../lib/redis.js';
 
 function toObjIdIfPossible(id) {
   try {
@@ -14,12 +15,19 @@ async function handler(req, res, user) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
+    let { month = '', techId = '', dateFrom = '', dateTo = '', status = '' } = req.query;
+
+    const cacheKey = `admin:technician-calls:${month}:${techId}:${dateFrom}:${dateTo}:${status}`;
+    const cachedResult = await getCache(cacheKey);
+    if (cachedResult) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cachedResult);
+    }
+
     const db = await getDb();
     const callsColl = db.collection('forwarded_calls');
     const techsColl = db.collection('technicians');
     const paymentsColl = db.collection('payments');
-
-    let { month = '', techId = '', dateFrom = '', dateTo = '', status = '' } = req.query;
 
     // compute date range (dateFrom/dateTo override month)
     let start, end;
@@ -46,59 +54,59 @@ async function handler(req, res, user) {
       if (maybeObj && typeof maybeObj !== 'string') techCandidates.push(maybeObj);
     }
 
-    // ----- month summary by status (counts & closed-amount by price) -----
-    const monthSummaryArr = await callsColl.aggregate([
-      { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
-      { $match: { closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $group: { _id: '$status', countInMonth: { $sum: 1 }, amountInMonth: { $sum: '$priceNum' } } }
-    ]).toArray();
+    // Run all 5 analytics queries in parallel for ultra-fast performance
+    const [monthSummaryArr, lifetimeArr, monthStatsArr, lifeStatsArr, paymentsByTechArr, techDocs] = await Promise.all([
+      callsColl.aggregate([
+        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
+        { $match: { closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
+        { $group: { _id: '$status', countInMonth: { $sum: 1 }, amountInMonth: { $sum: '$priceNum' } } }
+      ]).toArray(),
+
+      callsColl.aggregate([
+        { $addFields: { priceNum: { $ifNull: ['$price', 0] } } },
+        { $match: { status: 'Closed', ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
+        { $group: { _id: null, totalClosed: { $sum: 1 }, totalAmount: { $sum: '$priceNum' } } }
+      ]).toArray(),
+
+      callsColl.aggregate([
+        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
+        { $match: { status: 'Closed', closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
+        { $group: { _id: '$techId', monthClosed: { $sum: 1 }, monthAmountByPrice: { $sum: '$priceNum' } } }
+      ]).toArray(),
+
+      callsColl.aggregate([
+        { $addFields: { priceNum: { $ifNull: ['$price', 0] } } },
+        { $match: { status: 'Closed', ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
+        { $group: { _id: '$techId', totalClosed: { $sum: 1 }, totalAmount: { $sum: '$priceNum' } } }
+      ]).toArray(),
+
+      paymentsColl.aggregate([
+        { $match: { createdAt: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
+        { $unwind: { path: '$calls', preserveNullAndEmptyArrays: false } },
+        {
+          $addFields: {
+            techIdStr: { $toString: '$techId' },
+            callPaymentAmount: { $add: [{ $ifNull: ['$calls.onlineAmount', 0] }, { $ifNull: ['$calls.cashAmount', 0] }] }
+          }
+        },
+        { $group: { _id: '$techIdStr', submittedSum: { $sum: '$callPaymentAmount' } } }
+      ]).toArray(),
+
+      techsColl.find({}, { projection: { _id: 1, name: 1, fullName: 1, techName: 1, username: 1, phone: 1, avatar: 1, profilePic: 1, bio: 1 } }).sort({ name: 1 }).toArray()
+    ]);
 
     const monthByStatus = {};
     monthSummaryArr.forEach(r => { monthByStatus[r._id || 'UNKNOWN'] = { count: r.countInMonth || 0, amount: r.amountInMonth || 0 }; });
-
-    // ----- lifetime closed summary -----
-    const lifetimeArr = await callsColl.aggregate([
-      { $addFields: { priceNum: { $ifNull: ['$price', 0] } } },
-      { $match: { status: 'Closed', ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $group: { _id: null, totalClosed: { $sum: 1 }, totalAmount: { $sum: '$priceNum' } } }
-    ]).toArray();
     const lifetimeSummary = lifetimeArr[0] || { totalClosed: 0, totalAmount: 0 };
 
-    // ----- per-tech month & lifetime aggregated by calls (closed) -----
-    const monthStatsArr = await callsColl.aggregate([
-      { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
-      { $match: { status: 'Closed', closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $group: { _id: '$techId', monthClosed: { $sum: 1 }, monthAmountByPrice: { $sum: '$priceNum' } } }
-    ]).toArray();
     const monthMap = new Map();
     monthStatsArr.forEach(r => monthMap.set(String(r._id), { monthClosed: r.monthClosed || 0, monthAmountByPrice: r.monthAmountByPrice || 0 }));
 
-    const lifeStatsArr = await callsColl.aggregate([
-      { $addFields: { priceNum: { $ifNull: ['$price', 0] } } },
-      { $match: { status: 'Closed', ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $group: { _id: '$techId', totalClosed: { $sum: 1 }, totalAmount: { $sum: '$priceNum' } } }
-    ]).toArray();
     const lifeMap = new Map();
     lifeStatsArr.forEach(r => lifeMap.set(String(r._id), { totalClosed: r.totalClosed || 0, totalAmount: r.totalAmount || 0 }));
 
-    // ----- payments aggregated by tech in the same payment period (submitted amounts) -----
-    const paymentsByTechArr = await paymentsColl.aggregate([
-      { $match: { createdAt: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
-      { $unwind: { path: '$calls', preserveNullAndEmptyArrays: false } },
-      {
-        $addFields: {
-          techIdStr: { $toString: '$techId' },
-          callPaymentAmount: { $add: [{ $ifNull: ['$calls.onlineAmount', 0] }, { $ifNull: ['$calls.cashAmount', 0] }] }
-        }
-      },
-      { $group: { _id: '$techIdStr', submittedSum: { $sum: '$callPaymentAmount' } } }
-    ]).toArray();
-
     const paymentsMap = new Map();
     paymentsByTechArr.forEach(r => paymentsMap.set(String(r._id), r.submittedSum || 0));
-
-    // ----- technicians list -----
-    const techDocs = await techsColl.find({}, { projection: { _id: 1, name: 1, fullName: 1, techName: 1, username: 1, phone: 1, avatar: 1, profilePic: 1, bio: 1 } }).sort({ name: 1 }).toArray();
 
     let canonicalMonthSubmittedTotal = 0;
 
@@ -234,24 +242,19 @@ async function handler(req, res, user) {
 
     const callsList = await callsColl.aggregate(callsPipeline).toArray();
 
-    // canonical summary
-    const summary = {
-      monthClosed: monthByStatus['Closed']?.count || 0,
-      monthAmount: canonicalMonthSubmittedTotal || 0,
-      monthPending: monthByStatus['Pending']?.count || 0,
-      monthPendingAmount: monthByStatus['Pending']?.amount || 0,
-      totalClosed: lifetimeSummary.totalClosed || 0,
-      totalAmount: lifetimeSummary.totalAmount || 0
-    };
-
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.status(200).json({
+    const result = {
       success: true,
       technicians,
       summary,
       calls: callsList,
       monthSummaryByStatus: monthByStatus
-    });
+    };
+
+    await setCache(cacheKey, result, 60);
+
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'private, no-cache');
+    return res.status(200).json(result);
   } catch (err) {
     console.error('technician-calls error:', err);
     return res.status(500).json({ success: false, error: 'Internal Server Error' });
