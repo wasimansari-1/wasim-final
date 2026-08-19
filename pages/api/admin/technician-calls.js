@@ -29,7 +29,7 @@ async function handler(req, res, user) {
     const techsColl = db.collection('technicians');
     const paymentsColl = db.collection('payments');
 
-    // compute date range (dateFrom/dateTo override month)
+    // Compute date range (dateFrom/dateTo override month)
     let start, end;
     if (dateFrom || dateTo) {
       if (dateFrom) start = new Date(dateFrom + 'T00:00:00');
@@ -46,7 +46,7 @@ async function handler(req, res, user) {
       end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
     }
 
-    // tech filter (support string/ObjectId)
+    // Tech filter candidates (support string & ObjectId)
     const techCandidates = [];
     if (techId && techId !== 'all' && typeof techId === 'string') {
       techCandidates.push(techId);
@@ -54,10 +54,10 @@ async function handler(req, res, user) {
       if (maybeObj && typeof maybeObj !== 'string') techCandidates.push(maybeObj);
     }
 
-    // Run all 5 analytics queries in parallel for ultra-fast performance
+    // Run parallel queries
     const [monthSummaryArr, lifetimeArr, monthStatsArr, lifeStatsArr, paymentsByTechArr, techDocs] = await Promise.all([
       callsColl.aggregate([
-        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
+        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$updatedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
         { $match: { closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
         { $group: { _id: '$status', countInMonth: { $sum: 1 }, amountInMonth: { $sum: '$priceNum' } } }
       ]).toArray(),
@@ -69,7 +69,7 @@ async function handler(req, res, user) {
       ]).toArray(),
 
       callsColl.aggregate([
-        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
+        { $addFields: { closedDate: { $ifNull: ['$closedAt', '$updatedAt', '$createdAt'] }, priceNum: { $ifNull: ['$price', 0] } } },
         { $match: { status: 'Closed', closedDate: { $gte: start, $lt: end }, ...(techCandidates.length ? { techId: { $in: techCandidates } } : {}) } },
         { $group: { _id: '$techId', monthClosed: { $sum: 1 }, monthAmountByPrice: { $sum: '$priceNum' } } }
       ]).toArray(),
@@ -109,6 +109,7 @@ async function handler(req, res, user) {
     paymentsByTechArr.forEach(r => paymentsMap.set(String(r._id), r.submittedSum || 0));
 
     let canonicalMonthSubmittedTotal = 0;
+    let totalMonthClosedCalls = 0;
 
     const technicians = techDocs.map(t => {
       const key = String(t._id);
@@ -117,12 +118,17 @@ async function handler(req, res, user) {
       const monthSubmitted = paymentsMap.get(key) || 0;
 
       canonicalMonthSubmittedTotal += monthSubmitted;
+      totalMonthClosedCalls += monthCallStat.monthClosed;
 
       const displayName = (t.name && t.name.trim()) ||
         (t.fullName && t.fullName.trim()) ||
         (t.techName && t.techName.trim()) ||
         (t.username && t.username.trim()) ||
         'Unnamed';
+
+      const closedCallsCount = Number(monthCallStat.monthClosed || 0);
+      const incentiveRate = 100; // ₹100 per closed call
+      const monthlyIncentive = closedCallsCount * incentiveRate;
 
       return {
         _id: key,
@@ -131,7 +137,9 @@ async function handler(req, res, user) {
         phone: t.phone || '',
         avatar: t.avatar || t.profilePic || null,
         bio: t.bio || '',
-        monthClosed: monthCallStat.monthClosed,
+        monthClosed: closedCallsCount,
+        monthIncentive: monthlyIncentive,
+        incentiveRate: incentiveRate,
         monthAmountByPrice: monthCallStat.monthAmountByPrice,
         totalClosed: lifeStat.totalClosed,
         totalAmount: lifeStat.totalAmount,
@@ -140,7 +148,16 @@ async function handler(req, res, user) {
       };
     });
 
-    // ----- calls list (fetch calls with closure details for both specific tech and ALL techs) -----
+    // Summary calculation
+    const summary = {
+      monthClosedCalls: totalMonthClosedCalls,
+      monthIncentiveTotal: totalMonthClosedCalls * 100,
+      monthSubmittedTotal: canonicalMonthSubmittedTotal,
+      lifetimeClosedCalls: lifetimeSummary.totalClosed || 0,
+      lifetimeClosedAmount: lifetimeSummary.totalAmount || 0,
+    };
+
+    // ----- calls list with exact closure timestamps & details -----
     const callsMatchFilter = { closedDate: { $gte: start, $lt: end } };
     if (techCandidates.length) {
       callsMatchFilter.techId = { $in: techCandidates };
@@ -152,7 +169,7 @@ async function handler(req, res, user) {
     const callsPipeline = [
       {
         $addFields: {
-          closedDate: { $ifNull: ['$closedAt', '$createdAt'] },
+          closedDate: { $ifNull: ['$closedAt', '$updatedAt', '$createdAt'] },
           priceNum: { $ifNull: ['$price', 0] },
           callIdStr: { $toString: '$_id' },
           techIdStr: { $toString: '$techId' },
@@ -187,6 +204,7 @@ async function handler(req, res, user) {
           price: '$priceNum',
           createdAt: 1,
           closedAt: 1,
+          updatedAt: 1,
           closedByName: 1,
           notes: 1,
           chooseCall: 1,
@@ -257,7 +275,7 @@ async function handler(req, res, user) {
     return res.status(200).json(result);
   } catch (err) {
     console.error('technician-calls error:', err);
-    return res.status(500).json({ success: false, error: 'Internal Server Error' });
+    return res.status(500).json({ success: false, error: err?.message || 'Internal Server Error' });
   }
 }
 

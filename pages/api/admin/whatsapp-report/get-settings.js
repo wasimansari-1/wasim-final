@@ -13,13 +13,40 @@ async function handler(req, res, user) {
       settings = {
         key: "daily_8pm_report",
         senderPhone: "8700994288",
-        recipients: ["8700994288"],
+        recipients: [
+          { phone: "8700994288", label: "Admin Wasim", time: "20:00", active: true },
+        ],
         autoSend: true,
         sendTime: "20:00", // 8:00 PM
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       await db.collection("whatsapp_report_settings").insertOne(settings);
+    }
+
+    // Normalize recipients to array of structured objects (Max 4)
+    let normalizedRecipients = [];
+    if (Array.isArray(settings.recipients)) {
+      normalizedRecipients = settings.recipients.slice(0, 4).map((item, idx) => {
+        if (typeof item === "object" && item !== null) {
+          return {
+            phone: String(item.phone || "").replace(/[^0-9]/g, ""),
+            label: item.label || `Recipient ${idx + 1}`,
+            time: item.time || settings.sendTime || "20:00",
+            active: item.active !== false,
+          };
+        }
+        return {
+          phone: String(item || "").replace(/[^0-9]/g, ""),
+          label: `Recipient ${idx + 1}`,
+          time: settings.sendTime || "20:00",
+          active: true,
+        };
+      }).filter((r) => r.phone.length >= 10);
+    }
+
+    if (normalizedRecipients.length === 0) {
+      normalizedRecipients = [{ phone: "8700994288", label: "Admin Wasim", time: "20:00", active: true }];
     }
 
     // 2. Fetch today's live preview data
@@ -30,7 +57,7 @@ async function handler(req, res, user) {
       .collection("whatsapp_report_logs")
       .find({})
       .sort({ createdAt: -1 })
-      .limit(10)
+      .limit(15)
       .toArray();
 
     return res.json({
@@ -38,7 +65,7 @@ async function handler(req, res, user) {
       success: true,
       settings: {
         senderPhone: settings.senderPhone || "8700994288",
-        recipients: Array.isArray(settings.recipients) ? settings.recipients : ["8700994288"],
+        recipients: normalizedRecipients,
         autoSend: settings.autoSend !== false,
         sendTime: settings.sendTime || "20:00",
       },
@@ -47,10 +74,12 @@ async function handler(req, res, user) {
       logs: logs.map((l) => ({
         _id: l._id.toString(),
         phone: l.phone,
+        label: l.label || "",
         status: l.status,
         dateFormatted: l.dateFormatted,
         createdAt: l.createdAt,
         type: l.type || "automated",
+        error: l.error || null,
       })),
     });
   } catch (err) {

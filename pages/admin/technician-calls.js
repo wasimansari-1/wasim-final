@@ -19,6 +19,8 @@ import {
   FiSearch,
   FiChevronDown,
   FiChevronUp,
+  FiAward,
+  FiTrendingUp,
 } from 'react-icons/fi';
 
 function fmtDate(d) {
@@ -129,7 +131,9 @@ export default function TechnicianCallsPage() {
           monthAmountByPrice: safeNum(t.monthAmountByPrice || 0),
           totalAmount: safeNum(t.totalAmount || 0),
           monthClosed: Number(t.monthClosed || 0),
+          monthIncentive: Number(t.monthClosed || 0) * 100, // ₹100 per closed call
           totalClosed: Number(t.totalClosed || 0),
+          totalIncentive: Number(t.totalClosed || 0) * 100,
         }));
 
         const callsNorm = (data.calls || []).map((c) => ({
@@ -159,6 +163,22 @@ export default function TechnicianCallsPage() {
     if (user) load();
   }, [user, load]);
 
+  // Quick Month Preset Handlers
+  const handleSetThisMonth = () => {
+    const n = new Date();
+    setMonth(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`);
+    setDateFrom('');
+    setDateTo('');
+  };
+
+  const handleSetLastMonth = () => {
+    const n = new Date();
+    n.setMonth(n.getMonth() - 1);
+    setMonth(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`);
+    setDateFrom('');
+    setDateTo('');
+  };
+
   const counts = useMemo(
     () => ({
       Closed: calls.filter((c) => c.status === 'Closed' || c.status === 'Completed').length,
@@ -184,6 +204,7 @@ export default function TechnicianCallsPage() {
       const matchQuery =
         !q ||
         (c.clientName || '').toLowerCase().includes(q) ||
+        (c.customerName || '').toLowerCase().includes(q) ||
         (c.phone || '').includes(q) ||
         (c.address || '').toLowerCase().includes(q) ||
         (c.techName || '').toLowerCase().includes(q) ||
@@ -201,6 +222,17 @@ export default function TechnicianCallsPage() {
     return filteredCalls.reduce((s, x) => s + safeNum(x.submittedAmount), 0);
   }, [filteredCalls]);
 
+  const totalClosedIncentive = useMemo(() => {
+    const closedCount = summary?.monthClosedCalls ?? counts.Closed;
+    return closedCount * 100; // ₹100 per call
+  }, [summary, counts]);
+
+  const activeTechName = useMemo(() => {
+    if (selectedTech === 'all') return 'All Technicians';
+    const found = techs.find((t) => t._id === selectedTech);
+    return found ? found.name : 'Selected Technician';
+  }, [selectedTech, techs]);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Header user={user} />
@@ -210,14 +242,14 @@ export default function TechnicianCallsPage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-blue-700 text-white grid place-items-center shadow-md">
-              <FiPhoneCall size={22} />
+              <FiAward size={22} />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">
-                Technician Calls & Closure Audit
+                Technician Closed Calls & ₹100 Incentive Audit
               </h1>
               <p className="text-xs sm:text-sm text-slate-500">
-                Track which technician closed which call and exact closure timestamps.
+                Track which technician closed which call, exact closure timestamps, and calculate ₹100/call payout.
               </p>
             </div>
           </div>
@@ -226,7 +258,7 @@ export default function TechnicianCallsPage() {
             <button
               onClick={() => load({ notify: true })}
               disabled={refreshing}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold shadow-sm hover:bg-slate-50 transition"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold shadow-sm hover:bg-slate-50 transition active:scale-95"
             >
               <motion.span
                 animate={refreshing ? { rotate: 360 } : { rotate: 0 }}
@@ -239,48 +271,80 @@ export default function TechnicianCallsPage() {
           </div>
         </div>
 
-        {/* Summary Stat Cards */}
+        {/* 🌟 Summary KPI Banner with ₹100/Call Incentive Payout */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <SmallCard
             icon={<FiCheckCircle />}
-            label="Calls Closed (This Month)"
-            value={summary ? summary.monthClosed : counts.Closed}
+            label="Closed Calls (Month)"
+            value={summary ? summary.monthClosedCalls : counts.Closed}
+            subtext="Calls successfully finished"
             color="bg-emerald-600"
           />
+
           <SmallCard
-            icon={<FiUsers />}
-            label="Lifetime Closed"
-            value={summary ? summary.totalClosed : techs.reduce((s, t) => s + (t.totalClosed || 0), 0)}
-            color="bg-indigo-600"
+            icon={<FiAward />}
+            label="Incentive Payout (₹100/Call)"
+            value={`₹${totalClosedIncentive.toLocaleString('en-IN')}`}
+            subtext={`Rate: ₹100 × ${summary?.monthClosedCalls ?? counts.Closed} closed`}
+            color="bg-amber-600"
+            highlight={true}
           />
+
           <SmallCard
             icon={<FiDollarSign />}
-            label="Amount Collected"
-            value={`₹${safeNum(summary?.monthAmount ?? techs.reduce((s,t)=>s + (t.monthAmount||t.monthSubmitted||0),0)).toFixed(0)}`}
+            label="Payment Collected"
+            value={`₹${safeNum(summary?.monthSubmittedTotal ?? techs.reduce((s,t)=>s + (t.monthAmount||t.monthSubmitted||0),0)).toLocaleString('en-IN')}`}
+            subtext="Customer payment submitted"
             color="bg-blue-600"
           />
+
           <SmallCard
-            icon={<FiClock />}
-            label="Pending Calls"
-            value={summary?.monthPending || counts.Pending}
-            color="bg-amber-600"
+            icon={<FiUsers />}
+            label="Active Technicians"
+            value={techs.filter((t) => t.monthClosed > 0).length || techs.length}
+            subtext={`${techs.length} total registered techs`}
+            color="bg-indigo-600"
           />
         </div>
 
-        {/* Filters Panel */}
+        {/* 📅 Filters & Date Range Selection */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
+              <FiCalendar className="text-blue-600" />
+              <span>Month & Date Filter</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSetThisMonth}
+                className="px-2.5 py-1 text-xs rounded-lg font-medium bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition"
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                onClick={handleSetLastMonth}
+                className="px-2.5 py-1 text-xs rounded-lg font-medium bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition"
+              >
+                Last Month
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
             <div>
-              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Technician Filter</label>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Technician</label>
               <select
                 value={selectedTech}
                 onChange={(e) => setSelectedTech(e.target.value)}
                 className="input mt-1 bg-white"
               >
-                <option value="all">All Technicians</option>
+                <option value="all">All Technicians (Everyone)</option>
                 {techs.map((t) => (
                   <option key={t._id} value={t._id}>
-                    {t.name} {t.phone ? `(${t.phone})` : ''}
+                    {t.name} • ({t.monthClosed} closed)
                   </option>
                 ))}
               </select>
@@ -291,13 +355,17 @@ export default function TechnicianCallsPage() {
               <input
                 type="month"
                 value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                onChange={(e) => {
+                  setMonth(e.target.value);
+                  setDateFrom('');
+                  setDateTo('');
+                }}
                 className="input mt-1"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">From Date</label>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Custom From</label>
               <input
                 type="date"
                 value={dateFrom}
@@ -307,7 +375,7 @@ export default function TechnicianCallsPage() {
             </div>
 
             <div>
-              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">To Date</label>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Custom To</label>
               <input
                 type="date"
                 value={dateTo}
@@ -321,7 +389,7 @@ export default function TechnicianCallsPage() {
                 onClick={() => load({ notify: true })}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl text-sm transition active:scale-95 shadow-sm"
               >
-                Apply
+                Apply Filter
               </button>
             </div>
           </div>
@@ -332,7 +400,7 @@ export default function TechnicianCallsPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by client name, phone number, address, technician..."
+              placeholder="Search by client name, phone number, address, technician name, closed time..."
               className="input pl-9"
             />
           </div>
@@ -349,7 +417,7 @@ export default function TechnicianCallsPage() {
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <FiCheckCircle /> Closed Calls Log ({counts.Closed})
+              <FiCheckCircle /> Closed Calls Audit Log ({counts.Closed})
             </button>
 
             <button
@@ -360,7 +428,7 @@ export default function TechnicianCallsPage() {
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <FiUsers /> Technician Overview ({techs.length})
+              <FiAward /> Technician Payouts & Commission ({techs.length})
             </button>
           </div>
 
@@ -383,90 +451,121 @@ export default function TechnicianCallsPage() {
           )}
         </div>
 
-        {/* MAIN VIEW CONTENT */}
+        {/* ================= MAIN VIEW CONTENT ================= */}
         {viewMode === 'overview' ? (
-          /* Technician Cards Grid */
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base text-slate-900">All Technicians Performance</h2>
-              <span className="text-xs text-slate-500">{techs.length} Technicians active</span>
+          /* 🏆 Technician Incentive & Performance Cards */
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="font-bold text-base sm:text-lg text-slate-900">
+                  Technician Monthly Closure & ₹100 Payout Ledger
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Showing monthly closed calls, ₹100 per call commission calculation, and payment volume for each technician.
+                </p>
+              </div>
+              <div className="text-xs bg-amber-50 text-amber-800 border border-amber-200 font-semibold px-3 py-1.5 rounded-xl">
+                Fixed Incentive: ₹100 / Closed Call
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="h-36 rounded-2xl skeleton-shimmer border border-slate-100" />
+                    <div key={i} className="h-44 rounded-2xl skeleton-shimmer border border-slate-100" />
                   ))
-                : techs.map((t) => (
-                    <div
-                      key={t._id}
-                      onClick={() => {
-                        setSelectedTech(t._id);
-                        setViewMode('closed_log');
-                        setStatusTab('Closed');
-                      }}
-                      className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer flex flex-col justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold grid place-items-center flex-shrink-0 text-lg shadow-sm">
-                          {t.avatar ? (
-                            <img src={t.avatar} alt={t.name} className="h-full w-full object-cover rounded-2xl" />
-                          ) : (
-                            (t.name || '?')[0].toUpperCase()
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm text-slate-900 truncate">{t.name}</div>
-                          <div className="text-xs text-slate-500 truncate">📱 {t.phone || '—'}</div>
-                        </div>
-                      </div>
+                : techs.map((t) => {
+                    const closedCalls = t.monthClosed || 0;
+                    const incentiveAmount = closedCalls * 100;
 
-                      <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                    return (
+                      <div
+                        key={t._id}
+                        onClick={() => {
+                          setSelectedTech(t._id);
+                          setViewMode('closed_log');
+                          setStatusTab('Closed');
+                        }}
+                        className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-400 transition cursor-pointer flex flex-col justify-between group"
+                      >
                         <div>
-                          <div className="text-[10px] uppercase font-bold text-slate-400">Month Closed</div>
-                          <div className="font-extrabold text-emerald-600 text-sm">{t.monthClosed} calls</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase font-bold text-slate-400">Month Amount</div>
-                          <div className="font-extrabold text-blue-600 text-sm">₹{t.monthAmount || t.monthSubmitted}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase font-bold text-slate-400">Total Closed</div>
-                          <div className="font-semibold text-slate-700">{t.totalClosed} calls</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase font-bold text-slate-400">Total Amount</div>
-                          <div className="font-semibold text-slate-700">₹{t.totalAmount}</div>
-                        </div>
-                      </div>
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold grid place-items-center flex-shrink-0 text-lg shadow-sm">
+                              {t.avatar ? (
+                                <img src={t.avatar} alt={t.name} className="h-full w-full object-cover rounded-2xl" />
+                              ) : (
+                                (t.name || '?')[0].toUpperCase()
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition">
+                                {t.name}
+                              </div>
+                              <div className="text-xs text-slate-500 truncate">📱 {t.phone || '—'}</div>
+                            </div>
+                          </div>
 
-                      <button className="mt-3 w-full py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs transition">
-                        View Closed Calls →
-                      </button>
-                    </div>
-                  ))}
+                          {/* Incentive Highlight Box */}
+                          <div className="mt-3 bg-gradient-to-r from-amber-50 via-emerald-50 to-emerald-50/50 border border-emerald-200/80 rounded-xl p-2.5 flex items-center justify-between">
+                            <div>
+                              <div className="text-[10px] uppercase font-bold text-slate-500">
+                                🎁 Month Incentive (₹100/Call)
+                              </div>
+                              <div className="text-base font-extrabold text-emerald-700">
+                                ₹{incentiveAmount.toLocaleString('en-IN')}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
+                                {closedCalls} Closed
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Month Collected</div>
+                            <div className="font-bold text-blue-600">₹{Number(t.monthAmount || t.monthSubmitted || 0).toLocaleString('en-IN')}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Lifetime Closed</div>
+                            <div className="font-semibold text-slate-700">{t.totalClosed} calls (₹{(t.totalClosed * 100).toLocaleString('en-IN')})</div>
+                          </div>
+                        </div>
+
+                        <button className="mt-3 w-full py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs transition flex items-center justify-center gap-1">
+                          <span>View Closed Calls ({closedCalls})</span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    );
+                  })}
             </div>
           </div>
         ) : (
-          /* Closed Calls Audit Log */
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-4 shadow-sm">
+          /* 📋 Closed Calls Audit Log with Exact Timestamps */
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm">
             {/* Header info */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div>
-                <h2 className="font-bold text-base text-slate-900">
-                  {statusTab === 'Closed' ? '✅ Call Closure History & Audit Trail' : `${statusTab} Calls`}
+                <h2 className="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                  <span>{statusTab === 'Closed' ? '✅ Call Closure History & Exact Time Log' : `${statusTab} Calls`}</span>
+                  <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                    {activeTechName}
+                  </span>
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Showing {filteredCalls.length} call(s) • Total Price: ₹{totalPanelAmount} • Collected: ₹{totalCollectedAmount}
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Showing {filteredCalls.length} call(s) • Total Price: ₹{totalPanelAmount.toLocaleString('en-IN')} • Paid Collected: ₹{totalCollectedAmount.toLocaleString('en-IN')}
                 </p>
               </div>
 
               {selectedTech !== 'all' && (
                 <button
                   onClick={() => setSelectedTech('all')}
-                  className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition self-start sm:self-center"
                 >
-                  Clear Tech Filter (Show All)
+                  ✕ Clear Tech Filter (Show All)
                 </button>
               )}
             </div>
@@ -474,12 +573,12 @@ export default function TechnicianCallsPage() {
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-28 rounded-2xl skeleton-shimmer border border-slate-100" />
+                  <div key={i} className="h-32 rounded-2xl skeleton-shimmer border border-slate-100" />
                 ))}
               </div>
             ) : filteredCalls.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">
-                No {statusTab.toLowerCase()} calls found for the selected filters.
+              <div className="text-center py-16 text-slate-400 text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                No {statusTab.toLowerCase()} calls found for {activeTechName} in this date period.
               </div>
             ) : (
               <div className="space-y-3">
@@ -493,7 +592,7 @@ export default function TechnicianCallsPage() {
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={`p-4 rounded-2xl border transition shadow-sm hover:shadow-md ${
-                        isClosed ? 'border-emerald-100 bg-emerald-50/20' : 'border-slate-200 bg-white'
+                        isClosed ? 'border-emerald-200/80 bg-emerald-50/20' : 'border-slate-200 bg-white'
                       }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -516,6 +615,13 @@ export default function TechnicianCallsPage() {
                               {call.status}
                             </span>
 
+                            {isClosed && (
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                <FiAward size={12} />
+                                <span>+₹100 Incentive</span>
+                              </span>
+                            )}
+
                             {call.type && (
                               <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
                                 {call.type}
@@ -536,31 +642,31 @@ export default function TechnicianCallsPage() {
                             )}
                           </div>
 
-                          {/* 🌟 CRITICAL: Closure Timestamp & Technician Attribution */}
-                          <div className="bg-white/80 border border-slate-200/80 rounded-xl p-2.5 mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          {/* 🌟 EXACT CLOSURE TIMESTAMP & TECHNICIAN ATTRIBUTION */}
+                          <div className="bg-white/90 border border-slate-200 rounded-xl p-2.5 mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2">
                               <span className="h-6 w-6 rounded-lg bg-blue-100 text-blue-700 grid place-items-center font-bold text-xs">
                                 🔧
                               </span>
                               <span>
-                                Assigned Technician: <b className="text-blue-700">{call.techName || call.closedByName || 'Technician'}</b>
+                                Technician: <b className="text-blue-700">{call.techName || call.closedByName || 'Technician'}</b>
                               </span>
                             </div>
 
                             {isClosed && (
-                              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                <FiCheckCircle className="text-emerald-600" />
-                                <span className="text-emerald-900 font-semibold">
+                              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg">
+                                <FiCheckCircle className="text-emerald-600 text-sm" />
+                                <span className="text-emerald-950 font-bold">
                                   Closed: {fmtDate(closedTimestamp)}
                                 </span>
-                                <span className="text-[11px] text-emerald-700">
+                                <span className="text-[11px] text-emerald-700 font-medium">
                                   ({timeAgo(closedTimestamp)})
                                 </span>
                               </div>
                             )}
 
                             {!isClosed && call.createdAt && (
-                              <div className="text-slate-400 text-xs">
+                              <div className="text-slate-500 text-xs">
                                 Created: {fmtDate(call.createdAt)}
                               </div>
                             )}
@@ -648,15 +754,23 @@ export default function TechnicianCallsPage() {
   );
 }
 
-function SmallCard({ icon, label, value, color }) {
+function SmallCard({ icon, label, value, subtext, color, highlight }) {
   return (
-    <motion.div whileHover={{ scale: 1.01 }} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+    <motion.div
+      whileHover={{ scale: 1.01 }}
+      className={`p-4 rounded-2xl border shadow-sm flex items-center gap-3 transition ${
+        highlight ? 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200' : 'bg-white border-slate-200'
+      }`}
+    >
       <div className={`h-11 w-11 rounded-xl ${color} text-white grid place-items-center shadow-sm text-lg flex-shrink-0`}>
         {icon}
       </div>
-      <div className="min-w-0">
-        <div className="text-[11px] font-bold text-slate-400 uppercase truncate">{label}</div>
-        <div className="font-extrabold text-lg sm:text-xl text-slate-900 truncate">{value}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-bold text-slate-500 uppercase truncate">{label}</div>
+        <div className={`font-extrabold text-lg sm:text-xl truncate ${highlight ? 'text-amber-900' : 'text-slate-900'}`}>
+          {value}
+        </div>
+        {subtext && <div className="text-[10px] text-slate-400 truncate">{subtext}</div>}
       </div>
     </motion.div>
   );

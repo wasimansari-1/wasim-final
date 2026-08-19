@@ -14,31 +14,53 @@ async function handler(req, res, user) {
     // 1. Get live report data and message
     const { stats, formattedMessage } = await getDailyReportStats(db);
 
-    let targetPhones = [];
+    let targetRecipients = [];
 
     if (sendToAllConfigured) {
       const settings = await db.collection("whatsapp_report_settings").findOne({ key: "daily_8pm_report" });
-      targetPhones = Array.isArray(settings?.recipients) && settings.recipients.length > 0
-        ? settings.recipients
-        : [];
+      const rawList = Array.isArray(settings?.recipients) ? settings.recipients : [];
+
+      targetRecipients = rawList
+        .slice(0, 4) // Strictly maximum 4 numbers
+        .map((r, i) => {
+          if (typeof r === "object" && r !== null) {
+            return {
+              phone: String(r.phone || "").replace(/[^0-9]/g, ""),
+              label: r.label || `Recipient ${i + 1}`,
+              active: r.active !== false,
+            };
+          }
+          return {
+            phone: String(r || "").replace(/[^0-9]/g, ""),
+            label: `Recipient ${i + 1}`,
+            active: true,
+          };
+        })
+        .filter((r) => r.phone.length >= 10 && r.active);
     } else if (phone) {
       const clean = String(phone).replace(/[^0-9]/g, "");
       if (clean.length < 10) {
         return res.status(400).json({ ok: false, message: "Invalid phone number provided" });
       }
-      targetPhones = [clean];
+      targetRecipients = [{ phone: clean, label: "Direct Recipient", active: true }];
     } else {
       return res.status(400).json({ ok: false, message: "No recipient phone number specified" });
     }
 
+    if (targetRecipients.length === 0) {
+      return res.status(400).json({ ok: false, message: "No active recipient numbers found in configuration." });
+    }
+
     const results = [];
 
-    for (const num of targetPhones) {
+    for (const rec of targetRecipients) {
+      const num = rec.phone;
       const dispatchResult = await sendWhatsAppMessageDirect(num, formattedMessage, stats);
 
       // Log into database
       await db.collection("whatsapp_report_logs").insertOne({
         phone: num,
+        label: rec.label || "Recipient",
         status: dispatchResult.success ? "sent" : "failed",
         error: dispatchResult.error || null,
         apiResult: dispatchResult.result || null,
@@ -46,30 +68,31 @@ async function handler(req, res, user) {
         message: formattedMessage,
         stats,
         dateFormatted: stats.dateFormatted,
-        type: isTest ? "test" : "manual",
+        type: isTest ? "test" : sendToAllConfigured ? "manual_broadcast_4" : "manual",
         triggeredBy: user?.username || "admin",
         createdAt: new Date(),
       });
 
       results.push({
         phone: num,
+        label: rec.label,
         success: dispatchResult.success,
         waLink: dispatchResult.waLink,
         note: dispatchResult.note || null,
       });
     }
 
+    const successfulCount = results.filter((r) => r.success).length;
+
     return res.json({
       ok: true,
       success: true,
-      message: isTest
-        ? `Test message processed for ${results.length} recipient(s)`
-        : `Daily report dispatched to ${results.length} recipient(s)`,
+      message: `WhatsApp Report dispatched to ${successfulCount} of ${results.length} recipient(s).`,
       results,
-      formattedMessage,
+      stats,
     });
   } catch (err) {
-    console.error("Send WhatsApp report error:", err);
+    console.error("Send WhatsApp Report error:", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }

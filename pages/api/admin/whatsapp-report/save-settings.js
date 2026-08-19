@@ -14,28 +14,46 @@ async function handler(req, res, user) {
       return res.status(400).json({ ok: false, message: "Recipients must be an array" });
     }
 
-    // Clean and validate recipients (MAX 3 NUMBERS)
-    const cleanedRecipients = recipients
-      .map((num) => String(num || "").trim().replace(/[^0-9]/g, ""))
-      .filter((num) => num.length >= 10);
+    // Clean and validate recipients (MAXIMUM 4 NUMBERS STRICTLY ENFORCED)
+    const cleanedRecipients = [];
+    const seenPhones = new Set();
 
-    // Remove duplicates
-    const uniqueRecipients = Array.from(new Set(cleanedRecipients));
+    for (const item of recipients) {
+      const rawPhone = typeof item === "object" ? item.phone : item;
+      const cleanPhone = String(rawPhone || "").trim().replace(/[^0-9]/g, "");
 
-    if (uniqueRecipients.length === 0) {
-      return res.status(400).json({ ok: false, message: "At least 1 recipient phone number is required" });
+      if (cleanPhone.length >= 10 && !seenPhones.has(cleanPhone)) {
+        seenPhones.add(cleanPhone);
+        const label = typeof item === "object" && item.label ? String(item.label).trim() : `Recipient ${cleanedRecipients.length + 1}`;
+        const time = typeof item === "object" && item.time ? String(item.time).trim() : (sendTime || "20:00");
+        const active = typeof item === "object" && typeof item.active !== "undefined" ? Boolean(item.active) : true;
+
+        cleanedRecipients.push({
+          phone: cleanPhone,
+          label: label.slice(0, 30),
+          time: time || "20:00",
+          active,
+        });
+      }
     }
 
-    if (uniqueRecipients.length > 3) {
+    if (cleanedRecipients.length === 0) {
+      return res.status(400).json({ ok: false, message: "At least 1 recipient phone number is required." });
+    }
+
+    if (cleanedRecipients.length > 4) {
       return res.status(400).json({
         ok: false,
-        message: "Maximum 3 recipient phone numbers allowed. Please remove extra numbers.",
+        message: "Maximum 4 recipient phone numbers allowed. Ek sath maximum 4 number ko hi report bheja ja sakta hai.",
       });
     }
 
+    const simplePhoneList = cleanedRecipients.map((r) => r.phone);
+
     const updateDoc = {
       senderPhone: "8700994288",
-      recipients: uniqueRecipients,
+      recipients: cleanedRecipients, // Full rich objects
+      recipientPhones: simplePhoneList, // Simple array for quick compatibility
       autoSend: Boolean(autoSend),
       sendTime: sendTime || "20:00",
       updatedAt: new Date(),
@@ -51,7 +69,7 @@ async function handler(req, res, user) {
     return res.json({
       ok: true,
       success: true,
-      message: "WhatsApp Report Settings Saved Successfully",
+      message: `WhatsApp Report settings saved! ${cleanedRecipients.length} of 4 recipient slots configured.`,
       settings: updateDoc,
     });
   } catch (err) {

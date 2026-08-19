@@ -24,27 +24,28 @@ import {
 import { FiExternalLink } from "react-icons/fi";
 
 const OFFICIAL_SENDER = "8700994288";
+const MAX_RECIPIENTS = 4; // Strictly maximum 4 numbers
 
 export default function WhatsAppReportsPage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [sendingAll, setSendingAll] = useState(false);
+  const [sendingSingle, setSendingSingle] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // Settings State
   const [recipients, setRecipients] = useState([]);
   const [newNumber, setNewNumber] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newTime, setNewTime] = useState("20:00");
   const [autoSend, setAutoSend] = useState(true);
-  const [sendTime, setSendTime] = useState("20:00");
+  const [masterTime, setMasterTime] = useState("20:00");
 
   // Live Stats & Preview
   const [stats, setStats] = useState(null);
   const [formattedMessage, setFormattedMessage] = useState("");
   const [logs, setLogs] = useState([]);
-
-  // Test Send Modal State
-  const [testModalOpen, setTestModalOpen] = useState(false);
-  const [testPhone, setTestPhone] = useState("");
 
   // 1. Auth & Initial Data Fetch
   useEffect(() => {
@@ -77,16 +78,31 @@ export default function WhatsAppReportsPage() {
       const data = await res.json();
       if (data.ok && data.settings) {
         const recList = Array.isArray(data.settings.recipients) ? data.settings.recipients : [];
-        setRecipients(recList);
+        const normalized = recList.slice(0, MAX_RECIPIENTS).map((r, i) => {
+          if (typeof r === "object" && r !== null) {
+            return {
+              phone: String(r.phone || "").replace(/[^0-9]/g, ""),
+              label: r.label || `Recipient ${i + 1}`,
+              time: r.time || data.settings.sendTime || "20:00",
+              active: r.active !== false,
+            };
+          }
+          return {
+            phone: String(r || "").replace(/[^0-9]/g, ""),
+            label: `Recipient ${i + 1}`,
+            time: data.settings.sendTime || "20:00",
+            active: true,
+          };
+        });
+
+        setRecipients(normalized.length > 0 ? normalized : [{ phone: "8700994288", label: "Admin Wasim", time: "20:00", active: true }]);
         setAutoSend(data.settings.autoSend !== false);
-        setSendTime(data.settings.sendTime || "20:00");
+        setMasterTime(data.settings.sendTime || "20:00");
         setStats(data.stats || null);
         setFormattedMessage(data.formattedMessage || "");
         setLogs(data.logs || []);
-        if (recList.length > 0 && !testPhone) {
-          setTestPhone(recList[0]);
-        }
-        if (showToast) toast.success("Live Data Refreshed");
+
+        if (showToast) toast.success("Live stats and settings updated! 🔄");
       }
     } catch (err) {
       console.error("Fetch settings error:", err);
@@ -94,635 +110,670 @@ export default function WhatsAppReportsPage() {
     }
   };
 
-  // 2. Add Recipient (Max 3 Numbers)
-  const handleAddRecipient = () => {
+  // Immediate Auto-Persistence Helper (Jab tak delete na karein tab tak rahega)
+  const persistSettings = async (updatedRecipients, updatedAutoSend = autoSend, updatedMasterTime = masterTime) => {
+    try {
+      await fetch("/api/admin/whatsapp-report/save-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipients: updatedRecipients,
+          autoSend: updatedAutoSend,
+          sendTime: updatedMasterTime,
+        }),
+      });
+    } catch (err) {
+      console.error("Auto-persist error:", err);
+    }
+  };
+
+  // 2. Add Recipient (Strictly Max 4 Numbers with Auto-Save)
+  const handleAddRecipient = async () => {
     const clean = newNumber.trim().replace(/[^0-9]/g, "");
     if (clean.length < 10) {
       return toast.error("Please enter a valid 10-digit mobile number");
     }
-    if (recipients.length >= 3) {
-      return toast.error("Maximum 3 recipient numbers allowed");
+    if (recipients.length >= MAX_RECIPIENTS) {
+      return toast.error(`Maximum ${MAX_RECIPIENTS} recipient numbers allowed. Ek sath maximum 4 number hi add kiye ja sakte hain.`);
     }
-    if (recipients.includes(clean)) {
-      return toast.error("Number already in recipient list");
+    if (recipients.some((r) => r.phone === clean)) {
+      return toast.error("This mobile number is already in the recipient list");
     }
 
-    setRecipients((prev) => [...prev, clean]);
-    if (!testPhone) setTestPhone(clean);
+    const label = newLabel.trim() || `Recipient ${recipients.length + 1}`;
+    const time = newTime || masterTime || "20:00";
+
+    const nextRecipients = [
+      ...recipients,
+      { phone: clean, label, time, active: true },
+    ];
+
+    setRecipients(nextRecipients);
     setNewNumber("");
-    toast.success("Recipient added. Click 'Save Settings' to apply.");
+    setNewLabel("");
+
+    await persistSettings(nextRecipients);
+    toast.success(`Recipient "${label}" (+91 ${clean.slice(-10)}) saved permanently! 💾`);
   };
 
-  // 3. Remove Recipient
-  const handleRemoveRecipient = (num) => {
-    setRecipients((prev) => prev.filter((n) => n !== num));
+  // 3. Remove Recipient with Auto-Save
+  const handleRemoveRecipient = async (phoneToRemove) => {
+    if (recipients.length <= 1) {
+      return toast.error("At least 1 recipient number must remain.");
+    }
+    const nextRecipients = recipients.filter((r) => r.phone !== phoneToRemove);
+    setRecipients(nextRecipients);
+    await persistSettings(nextRecipients);
+    toast.success("Recipient removed from database.");
   };
 
-  // 4. Save Settings
+  // 4. Toggle Active Status with Auto-Save
+  const handleToggleRecipient = async (phone) => {
+    const nextRecipients = recipients.map((r) =>
+      r.phone === phone ? { ...r, active: !r.active } : r
+    );
+    setRecipients(nextRecipients);
+    await persistSettings(nextRecipients);
+  };
+
+  // 5. Update Time for Individual Recipient with Auto-Save
+  const handleUpdateTime = async (phone, time) => {
+    const nextRecipients = recipients.map((r) =>
+      r.phone === phone ? { ...r, time } : r
+    );
+    setRecipients(nextRecipients);
+    await persistSettings(nextRecipients);
+  };
+
+  // 6. Manual Save Settings Button
   const handleSaveSettings = async () => {
     if (recipients.length === 0) {
-      return toast.error("Please add at least 1 recipient phone number");
+      return toast.error("Please add at least 1 recipient number");
     }
+    if (recipients.length > MAX_RECIPIENTS) {
+      return toast.error(`Maximum ${MAX_RECIPIENTS} numbers allowed.`);
+    }
+
+    setSaving(true);
     try {
-      setSaving(true);
       const res = await fetch("/api/admin/whatsapp-report/save-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipients,
           autoSend,
-          sendTime,
+          sendTime: masterTime,
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.message || "Save failed");
-
-      toast.success("WhatsApp Settings Saved Successfully ✓");
-      await fetchSettingsAndStats();
+      if (data.ok) {
+        toast.success("✅ WhatsApp Report Settings Saved Successfully!");
+        await fetchSettingsAndStats();
+      } else {
+        toast.error(data.message || "Failed to save settings");
+      }
     } catch (err) {
-      toast.error(err.message || "Failed to save settings");
+      console.error("Save error:", err);
+      toast.error("Network error while saving");
     } finally {
       setSaving(false);
     }
   };
 
-  // 5. Send Test Message Now
-  const handleSendTestMessage = async (customPhone = null, sendAll = false) => {
+  // 7. Send Live Report to ALL Configured Active Numbers (Up to 4)
+  const handleSendToAll = async () => {
+    const activeList = recipients.filter((r) => r.active);
+    if (activeList.length === 0) {
+      return toast.error("No active recipient numbers found to send.");
+    }
+
+    if (!confirm(`Send today's live WhatsApp report to ${activeList.length} recipient(s) now?`)) {
+      return;
+    }
+
+    setSendingAll(true);
     try {
-      setSending(true);
-      const targetPhone = customPhone || testPhone;
-
-      if (!sendAll && !targetPhone) {
-        return toast.error("Please enter or select a recipient number");
-      }
-
       const res = await fetch("/api/admin/whatsapp-report/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: targetPhone,
-          isTest: true,
-          sendToAllConfigured: sendAll,
-        }),
+        body: JSON.stringify({ sendToAllConfigured: true }),
       });
-
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.message || "Send failed");
-
-      toast.success(data.message || "Message Dispatched Successfully!");
-      setTestModalOpen(false);
-      await fetchSettingsAndStats();
+      if (data.ok) {
+        toast.success(`🚀 Report sent to ${activeList.length} number(s) successfully!`);
+        await fetchSettingsAndStats();
+      } else {
+        toast.error(data.message || "Failed to send report");
+      }
     } catch (err) {
-      toast.error(err.message || "Failed to send message");
+      console.error("Send to all error:", err);
+      toast.error("Error sending to all recipients");
     } finally {
-      setSending(false);
+      setSendingAll(false);
     }
   };
 
-  // 6. Copy Formatted Message to Clipboard
-  const handleCopyMessage = () => {
+  // 8. Send to Single Recipient
+  const handleSendSingle = async (rec) => {
+    setSendingSingle(rec.phone);
+    try {
+      const res = await fetch("/api/admin/whatsapp-report/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: rec.phone, isTest: false }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`🚀 Report dispatched to ${rec.label} (${rec.phone})!`);
+        await fetchSettingsAndStats();
+      } else {
+        toast.error(data.message || "Failed to send");
+      }
+    } catch (err) {
+      toast.error("Error sending report");
+    } finally {
+      setSendingSingle(null);
+    }
+  };
+
+  // 9. Copy Message Text
+  const handleCopy = () => {
     if (!formattedMessage) return;
     navigator.clipboard.writeText(formattedMessage);
-    toast.success("Message copied to clipboard ✓");
+    setCopied(true);
+    toast.success("WhatsApp message copied to clipboard! 📋");
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  // 7. Open Direct in WhatsApp Web / App
-  const openInWhatsApp = (targetPhone = null) => {
-    const dest = targetPhone || (recipients[0] || OFFICIAL_SENDER);
-    let clean = dest.replace(/[^0-9]/g, "");
-    if (clean.length === 10) clean = "91" + clean;
-    const url = `https://wa.me/${clean}?text=${encodeURIComponent(formattedMessage)}`;
-    window.open(url, "_blank");
-  };
-
-  const formatCurrency = (val) => "₹" + Number(val || 0).toLocaleString("en-IN");
+  const activeCount = recipients.filter((r) => r.active).length;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans antialiased text-slate-800 pb-16">
+    <div className="min-h-screen bg-slate-50">
       <Header user={user} />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Executive Header Banner */}
-        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2 relative z-10">
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-[#25D366]/20 text-[#25D366] text-xs font-bold border border-[#25D366]/40 flex items-center gap-1.5 shadow-sm">
-                <FaWhatsapp size={14} /> WhatsApp Automation
-              </span>
-              <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold border border-blue-400/30">
-                Daily 8:00 PM Dispatch
-              </span>
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-5">
+        {/* Top Header Banner */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 via-green-600 to-emerald-700 text-white grid place-items-center shadow-md">
+              <FaWhatsapp size={26} />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Automatic Daily Report Updates
-            </h1>
-            <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-              Every day at 8:00 PM, Chimney Solutions CRM automatically aggregates today's total payments (Cash vs Online), closed calls, pending calls, and canceled calls, and sends a complete executive update to your WhatsApp.
-            </p>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">
+                WhatsApp Daily Reports & Dispatch Scheduler
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500">
+                Template: <b className="text-emerald-700 font-mono">thank_you</b> • Max 4 Recipient Numbers • Auto-Saved in Database
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 relative z-10">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => fetchSettingsAndStats(true)}
-              className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/15 transition shadow-sm"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold shadow-sm hover:bg-slate-50 transition active:scale-95 cursor-pointer"
             >
-              <FaSyncAlt size={12} /> Refresh Data
+              <FaSyncAlt className="text-xs" />
+              <span>Refresh</span>
             </button>
 
             <button
-              onClick={() => setTestModalOpen(true)}
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#20bd5a] hover:to-[#0f7a6e] active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 transition"
+              onClick={handleSaveSettings}
+              disabled={saving}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-md hover:bg-emerald-700 active:scale-95 transition disabled:opacity-60 cursor-pointer"
             >
-              <FaPaperPlane size={12} /> Send Test Message Now
+              <FaCheck className="text-xs" />
+              <span>{saving ? "Saving..." : "Save Settings"}</span>
             </button>
           </div>
         </div>
 
-        {/* Top Metric Cards: Today's Live CRM Figures */}
+        {/* 🌟 Live Today's Snapshot KPI Cards */}
         {stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {/* 1. Total Revenue */}
-            <div className="bg-gradient-to-br from-blue-900 to-indigo-950 text-white rounded-3xl p-4 sm:p-5 shadow-sm space-y-1 relative overflow-hidden">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
-                <FaMoneyBillWave size={12} className="text-emerald-400" /> Total Revenue Today
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-white">{formatCurrency(stats.totalRevenue)}</div>
-              <div className="text-[11px] text-blue-200/80 font-medium">
-                {stats.paymentsCount || 0} payment submissions
-              </div>
-            </div>
-
-            {/* 2. Cash vs Online Breakdown */}
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-sm space-y-1">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Payment Breakdown</div>
-              <div className="flex justify-between items-baseline gap-2 pt-0.5">
-                <div>
-                  <div className="text-[10px] font-semibold text-emerald-700">💵 Cash</div>
-                  <div className="text-sm sm:text-base font-extrabold text-slate-900">{formatCurrency(stats.totalCash)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] font-semibold text-blue-700">💳 Online</div>
-                  <div className="text-sm sm:text-base font-extrabold text-slate-900">{formatCurrency(stats.totalOnline)}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Closed Calls Today */}
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-sm space-y-1">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <FaCheckCircle size={11} className="text-emerald-600" /> Closed Calls Today
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-emerald-600">{stats.totalClosedToday || 0}</div>
-              <div className="text-[11px] text-slate-400 font-medium">Successfully completed</div>
-            </div>
-
-            {/* 4. Pending & Canceled Calls */}
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-sm space-y-1">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <FaHourglassHalf size={11} className="text-amber-500" /> Pending / Canceled
-              </div>
-              <div className="flex items-baseline gap-3 pt-0.5">
-                <div>
-                  <span className="text-xl font-black text-amber-600">{stats.totalPendingCalls || 0}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold ml-1">Pending</span>
-                </div>
-                <div>
-                  <span className="text-xl font-black text-rose-500">{stats.totalCanceledToday || 0}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold ml-1">Canceled</span>
-                </div>
-              </div>
-            </div>
+            <StatCard
+              icon={<FaMoneyBillWave />}
+              label="Today's Revenue"
+              value={`₹${(stats.totalRevenue || 0).toLocaleString("en-IN")}`}
+              subtext={`Cash: ₹${(stats.totalCash || 0).toLocaleString("en-IN")} • Online: ₹${(stats.totalOnline || 0).toLocaleString("en-IN")}`}
+              color="bg-emerald-600"
+            />
+            <StatCard
+              icon={<FaCheckCircle />}
+              label="Closed Calls Today"
+              value={`${stats.totalClosedToday || 0} calls`}
+              subtext="Completed jobs today"
+              color="bg-blue-600"
+            />
+            <StatCard
+              icon={<FaHourglassHalf />}
+              label="Pending Calls"
+              value={`${stats.totalPendingCalls || 0} calls`}
+              subtext="In process"
+              color="bg-amber-600"
+            />
+            <StatCard
+              icon={<FaWhatsapp />}
+              label="Recipient Slots"
+              value={`${recipients.length} / ${MAX_RECIPIENTS} Used`}
+              subtext={`${activeCount} active for dispatch`}
+              color="bg-emerald-700"
+            />
           </div>
         )}
 
-        {/* 2-Column Main Section: Settings & Live Message Preview */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Recipients Configuration (7 Cols) */}
+        {/* Main Grid: Recipient Manager & Live Message Preview */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* ================= LEFT: Recipient & Time Configuration (7 Cols) ================= */}
           <div className="lg:col-span-7 space-y-5">
-            {/* Sender Number & Automation Card */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-9 w-9 rounded-2xl bg-emerald-50 text-emerald-600 grid place-items-center text-base">
-                    <FaWhatsapp />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">Sender & Schedule Setup</h3>
-                    <p className="text-xs text-slate-400">Configure auto-dispatch parameters</p>
-                  </div>
-                </div>
-
-                <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-extrabold flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Live Active
-                </span>
-              </div>
-
-              {/* Sender Number Box */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <div className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-                  <FaPhoneAlt size={9} /> Official Sender WhatsApp Number (From which messages are sent)
-                </div>
-                <div className="text-base font-extrabold text-slate-900 flex items-center justify-between">
-                  <span>+91 {OFFICIAL_SENDER}</span>
-                  <span className="text-xs font-bold text-emerald-600 bg-emerald-100/60 px-2.5 py-0.5 rounded-lg">
-                    Official Sender
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  This is the registered WhatsApp API account. Messages are sent <b>FROM</b> this number <b>TO</b> the recipient numbers configured below.
-                </p>
-              </div>
-
-              {/* Automatic 8:00 PM Toggle */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                    <FaClock size={12} className="text-blue-600" /> Daily 8:00 PM Automatic Dispatch
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Automatically generates and sends today's summary every night at 20:00 IST to all recipients below.
+            {/* 1. Recipient Phone Numbers (Max 4 Slots) */}
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div>
+                  <h2 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                    <FaPhoneAlt className="text-emerald-600" />
+                    <span>Configured Recipients ({recipients.length} of {MAX_RECIPIENTS} Max)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Numbers are permanently saved. Jab tak aap delete nahi karenge, ye database me secure rahenge.
                   </p>
                 </div>
 
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <span
+                  className={`text-xs font-bold px-3 py-1 rounded-full ${
+                    recipients.length >= MAX_RECIPIENTS
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-emerald-100 text-emerald-800"
+                  }`}
+                >
+                  {recipients.length >= MAX_RECIPIENTS
+                    ? `Full (${MAX_RECIPIENTS}/${MAX_RECIPIENTS})`
+                    : `${recipients.length}/${MAX_RECIPIENTS} Slots Used`}
+                </span>
+              </div>
+
+              {/* Add Recipient Form */}
+              {recipients.length < MAX_RECIPIENTS ? (
+                <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-3">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    ➕ Add Recipient Slot ({recipients.length + 1} of {MAX_RECIPIENTS})
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+                        Mobile Number (10 Digits)
+                      </label>
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={newNumber}
+                        onChange={(e) => setNewNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="e.g. 9876543210"
+                        className="input bg-white text-xs py-2 px-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+                        Recipient Label / Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newLabel}
+                        onChange={(e) => setNewLabel(e.target.value)}
+                        placeholder="e.g. Owner Wasim, Manager"
+                        className="input bg-white text-xs py-2 px-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+                        Send Time
+                      </label>
+                      <input
+                        type="time"
+                        value={newTime}
+                        onChange={(e) => setNewTime(e.target.value)}
+                        className="input bg-white text-xs py-2 px-3"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleAddRecipient}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FaPlus />
+                      <span>Add & Save Permanently</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-3 text-xs flex items-center gap-2">
+                  <FaInfoCircle className="flex-shrink-0 text-amber-600" />
+                  <span>Maximum 4 recipient numbers reached. Ek sath 4 number ko hi report bheja ja sakta hai. Naya number add karne ke liye pehle kisi ek ko remove karein.</span>
+                </div>
+              )}
+
+              {/* Recipient Cards List */}
+              <div className="space-y-2.5 pt-1">
+                {recipients.map((rec, index) => {
+                  const cleanPhone = rec.phone.startsWith("91") ? rec.phone : "91" + rec.phone;
+                  const waChatLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(formattedMessage)}`;
+
+                  return (
+                    <div
+                      key={rec.phone}
+                      className={`p-3.5 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        rec.active
+                          ? "bg-white border-slate-200 shadow-sm"
+                          : "bg-slate-50/70 border-slate-200 opacity-60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 font-extrabold grid place-items-center flex-shrink-0 text-sm shadow-inner">
+                          #{index + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900">{rec.label}</span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                rec.active
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {rec.active ? "Active" : "Paused"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 font-mono flex items-center gap-2 mt-0.5">
+                            <span>📱 +91 {rec.phone.slice(-10)}</span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <FaClock size={10} className="text-slate-400" /> {rec.time || masterTime}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1.5 self-end sm:self-center">
+                        {/* Time Picker */}
+                        <input
+                          type="time"
+                          value={rec.time || masterTime}
+                          onChange={(e) => handleUpdateTime(rec.phone, e.target.value)}
+                          title="Change schedule time for this number"
+                          className="input bg-slate-50 text-xs py-1 px-2 w-24 border-slate-200 font-semibold"
+                        />
+
+                        {/* Instant Direct Send Button (No redirection) */}
+                        <button
+                          type="button"
+                          onClick={() => handleSendSingle(rec)}
+                          disabled={sendingSingle === rec.phone}
+                          title={`Send instant report to ${rec.label} (+91 ${rec.phone.slice(-10)})`}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm disabled:opacity-60 cursor-pointer"
+                        >
+                          <FaPaperPlane size={12} />
+                          <span>{sendingSingle === rec.phone ? "Sending..." : "Send Report"}</span>
+                        </button>
+
+                        {/* Direct WA Web Full Report Link */}
+                        <a
+                          href={waChatLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open 100% Full Unbroken Report in WhatsApp"
+                          className="p-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition active:scale-95 cursor-pointer"
+                        >
+                          <FaWhatsapp size={14} />
+                        </a>
+
+                        {/* Active Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRecipient(rec.phone)}
+                          title={rec.active ? "Pause Auto-Send for this number" : "Resume Auto-Send"}
+                          className={`px-2.5 py-1 text-xs font-bold rounded-xl transition cursor-pointer ${
+                            rec.active
+                              ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                              : "bg-emerald-600 text-white hover:bg-emerald-700"
+                          }`}
+                        >
+                          {rec.active ? "Pause" : "Enable"}
+                        </button>
+
+                        {/* Delete */}
+                        {recipients.length > 1 && (
+                          <button
+                            onClick={() => handleRemoveRecipient(rec.phone)}
+                            title="Remove recipient permanently"
+                            className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 transition active:scale-95 cursor-pointer"
+                          >
+                            <FaTrash size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Global Automated Schedule Settings */}
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                    <FaClock className="text-blue-600" />
+                    <span>Daily Automatic Dispatch Schedule</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    System har roz is time par configured numbers ko automatic WhatsApp daily report send karega.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
                     checked={autoSend}
-                    onChange={(e) => setAutoSend(e.target.checked)}
+                    onChange={(e) => {
+                      setAutoSend(e.target.checked);
+                      persistSettings(recipients, e.target.checked, masterTime);
+                    }}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                 </label>
               </div>
 
-              {/* Recipients List (Max 3 Numbers) */}
-              <div className="space-y-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Recipient WhatsApp Numbers</h4>
-                    <p className="text-[11px] text-slate-400">
-                      Add your personal mobile numbers to receive daily reports (Max 3 numbers)
-                    </p>
-                  </div>
-                  <span className="text-xs font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-xl border border-blue-100">
-                    {recipients.length} / 3 Slots Used
-                  </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Default Auto-Send Time (IST)
+                  </label>
+                  <input
+                    type="time"
+                    value={masterTime}
+                    onChange={(e) => {
+                      setMasterTime(e.target.value);
+                      persistSettings(recipients, autoSend, e.target.value);
+                    }}
+                    className="input bg-slate-50 text-sm font-bold border-slate-200"
+                  />
                 </div>
 
-                {/* Recipient Cards */}
-                {recipients.length === 0 ? (
-                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 space-y-1">
-                    <div className="font-bold">No recipient numbers added yet!</div>
-                    <p className="text-[11px] text-amber-800">
-                      Add your personal mobile number below (e.g. your WhatsApp number) so the system knows where to deliver the 8:00 PM update.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {recipients.map((num, idx) => (
-                      <div
-                        key={num}
-                        className="p-3 bg-slate-50 hover:bg-slate-100/80 transition rounded-2xl border border-slate-200/70 flex items-center justify-between gap-3"
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    Quick Preset Times
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["20:00", "20:30", "21:00", "21:30", "22:00"].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => {
+                          setMasterTime(t);
+                          const updated = recipients.map((r) => ({ ...r, time: t }));
+                          setRecipients(updated);
+                          persistSettings(updated, autoSend, t);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          masterTime === t
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-xl bg-slate-900 text-white font-black text-xs grid place-items-center">
-                            #{idx + 1}
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                              <span>+91 {num}</span>
-                              <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-md">
-                                Recipient #{idx + 1}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-slate-400">Receives 8:00 PM Daily WhatsApp Report</div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => openInWhatsApp(num)}
-                            title="Open WhatsApp chat with formatted report"
-                            className="px-2.5 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition text-xs font-bold flex items-center gap-1"
-                          >
-                            <FaWhatsapp size={13} /> Chat
-                          </button>
-
-                          <button
-                            onClick={() => handleRemoveRecipient(num)}
-                            title="Remove recipient"
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition"
-                          >
-                            <FaTrash size={13} />
-                          </button>
-                        </div>
-                      </div>
+                        {t}
+                      </button>
                     ))}
                   </div>
-                )}
-
-                {/* Add Recipient Input (if less than 3) */}
-                {recipients.length < 3 ? (
-                  <div className="pt-2 flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <FaPhoneAlt className="absolute left-3.5 top-3 text-slate-400 text-xs" />
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        value={newNumber}
-                        onChange={(e) => setNewNumber(e.target.value)}
-                        placeholder="Enter 10-digit mobile number..."
-                        className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-                      />
-                    </div>
-                    <button
-                      onClick={handleAddRecipient}
-                      className="px-4 py-2 bg-slate-900 hover:bg-black active:scale-95 text-white text-xs font-bold rounded-2xl flex items-center gap-1.5 transition shadow-sm shrink-0"
-                    >
-                      <FaPlus size={10} /> Add Number
-                    </button>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-slate-100 rounded-2xl text-xs text-slate-600 flex items-center gap-2">
-                    <FaInfoCircle size={14} className="text-slate-500 shrink-0" />
-                    <span>Maximum 3 recipient numbers limit reached. Remove a number to add a new one.</span>
-                  </div>
-                )}
+                </div>
               </div>
 
-              {/* Save Settings Action */}
-              <div className="pt-3 border-t border-slate-100 flex justify-end">
-                <button
-                  disabled={saving}
-                  onClick={handleSaveSettings}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-2xl flex items-center gap-2 shadow-md shadow-blue-500/20 transition disabled:opacity-60"
-                >
-                  <FaCheck size={12} />
-                  {saving ? "Saving Changes..." : "Save Settings"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Live Message Preview Card (5 Cols) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-[#0b141a] text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-slate-800 space-y-4 relative">
-              {/* Preview Header */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs text-blue-900 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-full bg-[#25D366] text-slate-950 font-black grid place-items-center text-sm">
-                    CS
-                  </div>
-                  <div>
-                    <div className="font-bold text-white text-xs flex items-center gap-1.5">
-                      <span>Chimney Solutions CRM</span>
-                      <FaShieldAlt size={10} className="text-[#25D366]" />
-                    </div>
-                    <div className="text-[10px] text-slate-400">WhatsApp Preview • 08:00 PM</div>
-                  </div>
+                  <FaShieldAlt className="text-blue-600 flex-shrink-0 text-sm" />
+                  <span>
+                    Status: <b>{autoSend ? `Enabled (Scheduled at ${masterTime} IST Daily)` : "Disabled (Manual Only)"}</b>
+                  </span>
                 </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={handleCopyMessage}
-                    title="Copy Formatted Text"
-                    className="p-2 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 rounded-xl transition text-xs"
-                  >
-                    <FaCopy />
-                  </button>
-
-                  <button
-                    onClick={() => openInWhatsApp()}
-                    title="Open in WhatsApp Web"
-                    className="p-2 text-[#25D366] hover:text-white bg-slate-800/80 hover:bg-slate-800 rounded-xl transition text-xs"
-                  >
-                    <FiExternalLink />
-                  </button>
-                </div>
+                <span className="font-semibold text-blue-700">{activeCount} recipient(s) active</span>
               </div>
+            </div>
 
-              {/* Realistic WhatsApp Chat Bubble */}
-              <div className="bg-[#1f2c34] text-slate-100 p-4 rounded-2xl rounded-tl-sm text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-700/50 shadow-inner">
-                {formattedMessage || "Loading live preview..."}
-                <div className="text-right text-[10px] text-slate-400 mt-2 font-sans flex items-center justify-end gap-1">
-                  <span>08:00 PM</span>
-                  <span className="text-blue-400">✓✓</span>
+            {/* 3. Instant 1-Click Multi-Send Action Banner */}
+            <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-800 rounded-3xl p-5 sm:p-6 text-white shadow-lg space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg flex items-center gap-2">
+                    <span>🚀 Instant Multi-Number Dispatch</span>
+                  </h3>
+                  <p className="text-xs text-emerald-100 opacity-90 mt-0.5">
+                    Template <b className="text-amber-300 font-mono">thank_you</b> ke sath sabhi {activeCount} number(s) ko instant message send karein.
+                  </p>
                 </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-2 pt-1">
-                <button
-                  onClick={() => setTestModalOpen(true)}
-                  className="w-full py-3 bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#20bd5a] hover:to-[#0f7a6e] active:scale-95 text-white font-bold text-xs rounded-2xl transition flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20"
-                >
-                  <FaPaperPlane size={12} /> Send Live Test to WhatsApp
-                </button>
 
                 <button
-                  onClick={() => openInWhatsApp()}
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-xs rounded-2xl transition flex items-center justify-center gap-2"
+                  onClick={handleSendToAll}
+                  disabled={sendingAll || activeCount === 0}
+                  className="px-5 py-3 rounded-2xl bg-white text-emerald-800 font-extrabold text-sm shadow-md hover:bg-emerald-50 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
                 >
-                  <FaWhatsapp size={14} className="text-[#25D366]" /> Open in WhatsApp Web Directly
+                  <FaPaperPlane />
+                  <span>{sendingAll ? "Dispatching..." : `Send to All (${activeCount} Numbers)`}</span>
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Quick Dispatch Info Box */}
-            <div className="p-4 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-2 text-xs text-slate-600">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                <FaInfoCircle className="text-blue-600" /> Important Instructions:
+          {/* ================= RIGHT: WhatsApp Message Live Preview & Audit Logs (5 Cols) ================= */}
+          <div className="lg:col-span-5 space-y-5">
+            {/* Live Message Bubble Preview */}
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <FaWhatsapp className="text-emerald-500 text-lg" />
+                  <h3 className="font-extrabold text-base text-slate-900">Live WhatsApp Message Preview</h3>
+                </div>
+
+                <button
+                  onClick={handleCopy}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copied ? <FaCheck className="text-emerald-600" /> : <FaCopy />}
+                  <span>{copied ? "Copied" : "Copy Text"}</span>
+                </button>
               </div>
-              <ul className="list-disc pl-4 space-y-1.5 text-[11px] text-slate-500">
-                <li>
-                  <b>Sender:</b> <code className="text-slate-800 font-bold">8700994288</code> is your official business account.
-                </li>
-                <li>
-                  <b>Recipients:</b> Add your personal WhatsApp mobile number(s) in the list above to receive notifications.
-                </li>
-                <li>
-                  At 8:00 PM every night, CRM automatically dispatches today's full collection and calls report.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
 
-        {/* Bottom Section: Recent Dispatch Logs Table */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">Recent Dispatch Logs</h3>
-              <p className="text-xs text-slate-400">History of daily reports and test messages sent</p>
+              {/* Chat Bubble Container */}
+              <div className="bg-[#EFEAE2] rounded-2xl p-4 sm:p-5 border border-[#e0dad0] shadow-inner relative">
+                <div className="bg-white rounded-2xl rounded-tl-sm p-4 shadow-md text-xs sm:text-sm text-slate-800 leading-relaxed font-sans space-y-2 border border-slate-100">
+                  <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm text-slate-900">
+                    {formattedMessage || "Generating daily aggregated report preview..."}
+                  </pre>
+                  <div className="text-right text-[10px] text-slate-400 font-mono">
+                    {masterTime} • ✓✓
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-500 text-center">
+                This exact live report is pushed to WhatsApp numbers configured on the left.
+              </div>
             </div>
 
-            <button
-              onClick={() => fetchSettingsAndStats()}
-              className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
-            >
-              <FaSyncAlt size={10} /> Refresh Logs
-            </button>
-          </div>
+            {/* Recent Dispatch History Log */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                  <FaClock className="text-slate-400" />
+                  <span>Recent Dispatch Audit Logs</span>
+                </h3>
+                <span className="text-[11px] text-slate-400">{logs.length} logged</span>
+              </div>
 
-          {logs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              No reports dispatched yet. Use "Send Test Message" above to test the system.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 uppercase text-[10px] font-bold">
-                    <th className="py-2.5 px-3">Date & Time</th>
-                    <th className="py-2.5 px-3">Recipient Number</th>
-                    <th className="py-2.5 px-3">Dispatch Type</th>
-                    <th className="py-2.5 px-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
+              {logs.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  No dispatch logs recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {logs.map((log) => (
-                    <tr key={log._id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-3 font-semibold text-slate-800">
-                        {new Date(log.createdAt).toLocaleString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                      <td className="py-3 px-3 font-bold text-slate-900">
-                        +91 {log.phone}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            log.type === "automated_cron_8pm"
-                              ? "bg-blue-50 text-blue-700"
-                              : log.type === "test"
-                              ? "bg-purple-50 text-purple-700"
-                              : "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          {log.type === "automated_cron_8pm" ? "8:00 PM Auto" : log.type === "test" ? "Test Send" : "Manual"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            log.status === "sent"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-rose-50 text-rose-700 border border-rose-200"
-                          }`}
-                        >
-                          {log.status === "sent" ? "✓ Sent" : "✕ Failed"}
-                        </span>
-                      </td>
-                    </tr>
+                    <div
+                      key={log._id}
+                      className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          📱 +91 {log.phone?.slice(-10)} {log.label ? `(${log.label})` : ""}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {new Date(log.createdAt).toLocaleString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })} • {log.type}
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          log.status === "sent"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-rose-100 text-rose-800"
+                        }`}
+                      >
+                        {log.status === "sent" ? "Delivered ✓" : "Failed ✕"}
+                      </span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </main>
+    </div>
+  );
+}
 
-      {/* 🚀 TEST SEND POPUP MODAL */}
-      <AnimatePresence>
-        {testModalOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-            onClick={() => setTestModalOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4"
-            >
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <div className="h-10 w-10 rounded-2xl bg-[#25D366]/20 text-[#25D366] grid place-items-center text-lg">
-                  <FaWhatsapp />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base">Send Instant Test WhatsApp</h3>
-                  <p className="text-xs text-slate-400">Sent from official number +91 {OFFICIAL_SENDER}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Enter Recipient Mobile Number (To which message is sent):
-                  </label>
-                  <div className="relative">
-                    <FaPhoneAlt className="absolute left-3.5 top-3 text-slate-400 text-xs" />
-                    <input
-                      type="tel"
-                      value={testPhone}
-                      onChange={(e) => setTestPhone(e.target.value)}
-                      placeholder="Enter 10-digit mobile number..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-9 pr-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-                    />
-                  </div>
-                </div>
-
-                {recipients.length > 0 && (
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">Or select configured recipient:</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {recipients.map((r) => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setTestPhone(r)}
-                          className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition ${
-                            testPhone === r
-                              ? "bg-slate-900 text-white border-slate-900"
-                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-                          }`}
-                        >
-                          +91 {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <button
-                  disabled={sending}
-                  onClick={() => handleSendTestMessage(testPhone, false)}
-                  className="w-full py-3 bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#20bd5a] hover:to-[#0f7a6e] active:scale-95 text-white font-bold text-xs rounded-2xl transition flex items-center justify-center gap-2 shadow-md shadow-[#25D366]/20 disabled:opacity-60"
-                >
-                  <FaPaperPlane size={12} />
-                  {sending ? "Dispatching Message..." : `Send Test to +91 ${testPhone || "Recipient"}`}
-                </button>
-
-                {recipients.length > 0 && (
-                  <button
-                    disabled={sending}
-                    onClick={() => handleSendTestMessage(null, true)}
-                    className="w-full py-2.5 bg-slate-900 hover:bg-black active:scale-95 text-white font-bold text-xs rounded-2xl transition flex items-center justify-center gap-2 disabled:opacity-60"
-                  >
-                    Send to All {recipients.length} Configured Recipients
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setTestModalOpen(false)}
-                  className="w-full py-2 text-slate-400 hover:text-slate-700 text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+function StatCard({ icon, label, value, subtext, color }) {
+  return (
+    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+      <div className={`h-11 w-11 rounded-xl ${color} text-white grid place-items-center shadow-sm text-lg flex-shrink-0`}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-bold text-slate-500 uppercase truncate">{label}</div>
+        <div className="font-extrabold text-base sm:text-lg text-slate-900 truncate">{value}</div>
+        {subtext && <div className="text-[10px] text-slate-400 truncate">{subtext}</div>}
+      </div>
     </div>
   );
 }
