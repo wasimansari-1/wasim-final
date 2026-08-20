@@ -16,18 +16,9 @@ import toast from "react-hot-toast";
 import {
   FiUser,
   FiMapPin,
-  FiPhone,
-  FiDollarSign,
   FiCamera,
-  FiCheckCircle,
-  FiClock,
   FiX,
-  FiSearch,
-  FiLayers,
-  FiShield,
   FiCheck,
-  FiRefreshCw,
-  FiAlertCircle,
 } from "react-icons/fi";
 import {
   FaPhoneAlt,
@@ -71,7 +62,6 @@ const SERVICE_STATUS_OPTIONS = [
     id: "Service Done",
     label: "Service Done",
     icon: FaWrench,
-    color: "emerald",
     activeClass: "bg-gradient-to-tr from-emerald-600 to-teal-500 text-white border-emerald-500 shadow-md shadow-emerald-500/25",
     inactiveClass: "bg-white hover:bg-emerald-50/70 text-slate-700 border-slate-200 hover:border-emerald-300",
   },
@@ -79,7 +69,6 @@ const SERVICE_STATUS_OPTIONS = [
     id: "Installation Done",
     label: "Installation Done",
     icon: FaTools,
-    color: "blue",
     activeClass: "bg-gradient-to-tr from-blue-600 to-indigo-500 text-white border-blue-500 shadow-md shadow-blue-500/25",
     inactiveClass: "bg-white hover:bg-blue-50/70 text-slate-700 border-slate-200 hover:border-blue-300",
   },
@@ -87,7 +76,6 @@ const SERVICE_STATUS_OPTIONS = [
     id: "Complaint Done",
     label: "Complaint Done",
     icon: FaCheckDouble,
-    color: "purple",
     activeClass: "bg-gradient-to-tr from-purple-600 to-indigo-500 text-white border-purple-500 shadow-md shadow-purple-500/25",
     inactiveClass: "bg-white hover:bg-purple-50/70 text-slate-700 border-slate-200 hover:border-purple-300",
   },
@@ -95,7 +83,6 @@ const SERVICE_STATUS_OPTIONS = [
     id: "Under Process",
     label: "Under Process",
     icon: FaHourglassHalf,
-    color: "amber",
     activeClass: "bg-gradient-to-tr from-amber-500 to-orange-500 text-white border-amber-500 shadow-md shadow-amber-500/25",
     inactiveClass: "bg-white hover:bg-amber-50/70 text-slate-700 border-slate-200 hover:border-amber-300",
   },
@@ -121,7 +108,7 @@ export default function TechHome() {
 
   const sigRef = useRef(null);
   const sigContainerRef = useRef(null);
-  const [canvasWidth, setCanvasWidth] = useState(500);
+  const [canvasWidth, setCanvasWidth] = useState(300);
 
   // Sticker upload states
   const fileInputRef = useRef(null);
@@ -136,15 +123,15 @@ export default function TechHome() {
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [callSearch, setCallSearch] = useState("");
   const [selectedCall, setSelectedCall] = useState(null);
-  const [modalTab, setModalTab] = useState("all"); // "all" | "pending"
+  const [modalTab, setModalTab] = useState("all");
 
   // Duplicate submission guard
   const [lastSubmittedFingerprint, setLastSubmittedFingerprint] = useState("");
 
-  // 🎉 Happy success overlay
+  // Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
-  // Responsive SignaturePad Canvas measurement (prevents all mobile overflow)
+  // Responsive SignaturePad Canvas measurement (guarantees 0 overflow)
   useEffect(() => {
     const updateSize = () => {
       if (sigContainerRef.current) {
@@ -156,8 +143,8 @@ export default function TechHome() {
           return;
         }
       }
-      const fallback = typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 500) : 320;
-      setCanvasWidth(fallback > 0 ? fallback : 320);
+      const fallback = typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 480) : 300;
+      setCanvasWidth(fallback > 0 ? fallback : 300);
     };
 
     updateSize();
@@ -322,13 +309,11 @@ export default function TechHome() {
     })();
   }, []);
 
-  // Clear signature
   const clearSig = useCallback(() => {
     sigRef.current?.clear();
     setForm((prev) => ({ ...prev, signature: "" }));
   }, []);
 
-  // 1) Choose Customer -> AUTOMATIC ALL FIELDS AUTO-FILL
   const handleSelectCustomerCall = useCallback((call) => {
     if (!call) return;
     vibrate([25]);
@@ -346,7 +331,7 @@ export default function TechHome() {
       setCallModalOpen(false);
     });
 
-    toast.success(`✓ Auto-filled details for ${call.clientName || "Customer"}`, {
+    toast.success(`✓ Auto-filled: ${call.clientName || "Customer"}`, {
       id: "customer-autofill",
       icon: "📋",
     });
@@ -366,7 +351,7 @@ export default function TechHome() {
     toast("Customer selection cleared", { icon: "🧹" });
   }, []);
 
-  // ===================== Compression helpers (client) =====================
+  // Compression helper
   async function compressImageFileToTarget(file, targetBytes = 6 * 1024) {
     if (!file) throw new Error("No file");
 
@@ -431,7 +416,7 @@ export default function TechHome() {
       reader.readAsDataURL(blob);
     });
 
-  // ===================== Sticker upload =====================
+  // Sticker upload
   async function handleFileInputChange(e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -445,7 +430,7 @@ export default function TechHome() {
       previewReader.onload = () => setStickerPreview(previewReader.result);
       previewReader.readAsDataURL(f);
 
-      const targetBytes = 6 * 1024; // aim ~6KB
+      const targetBytes = 6 * 1024;
       const compressedBlob = await compressImageFileToTarget(f, targetBytes);
 
       setStickerUploadProgress(40);
@@ -487,7 +472,7 @@ export default function TechHome() {
     fileInputRef.current.click();
   }
 
-  // ===================== Submit form =====================
+  // Submit form
   async function submit(e) {
     e.preventDefault();
 
@@ -503,7 +488,6 @@ export default function TechHome() {
       return;
     }
 
-    // Extract signature directly from canvas if drawn
     let sigData = form.signature;
     try {
       if (sigRef.current && !sigRef.current.isEmpty()) {
@@ -572,7 +556,6 @@ export default function TechHome() {
       setStickerPreview(null);
       setStickerUploadedUrl("");
 
-      // Reload fresh calls
       await loadCalls();
     } catch (err) {
       console.error("Form submit error:", err);
@@ -605,42 +588,42 @@ export default function TechHome() {
   }, [calls, callSearch, modalTab]);
 
   return (
-    <div className="min-h-screen bg-slate-50 safe-bottom overflow-x-hidden w-full">
+    <div className="min-h-screen bg-slate-50 safe-bottom overflow-x-hidden w-full max-w-full">
       <Header user={user} />
 
-      <main className="w-full max-w-2xl mx-auto px-3 sm:px-6 py-3 sm:py-6 space-y-4">
+      <main className="w-full max-w-2xl mx-auto px-2.5 sm:px-6 py-2.5 sm:py-6 space-y-3.5">
         {/* Main Card */}
-        <div className="w-full bg-white rounded-3xl p-3.5 sm:p-6 shadow-sm border border-slate-200/80 space-y-5 overflow-hidden">
+        <div className="w-full max-w-full bg-white rounded-3xl p-3 sm:p-6 shadow-sm border border-slate-200/80 space-y-4 overflow-hidden">
           
           {/* Header */}
-          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-            <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white grid place-items-center text-xl shadow-md shadow-blue-500/20 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 pb-3 border-b border-slate-100 w-full">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white grid place-items-center text-lg sm:text-xl shadow-md shadow-blue-500/20 shrink-0">
               📝
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-sm sm:text-lg font-black text-slate-900 leading-tight">
                   Technician Service Form
                 </h1>
-                <span className="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-blue-200 uppercase tracking-wider shrink-0">
+                <span className="bg-blue-50 text-blue-700 text-[9px] sm:text-[10px] font-black px-2 py-0.2 rounded-full border border-blue-200 uppercase tracking-wider shrink-0">
                   Live
                 </span>
               </div>
-              <p className="text-xs text-slate-500 truncate sm:whitespace-normal">
+              <p className="text-[11px] sm:text-xs text-slate-500 leading-snug mt-0.5">
                 Choose customer call to auto-fill details, complete service & record sticker/signature.
               </p>
             </div>
           </div>
 
-          <form onSubmit={submit} className="grid gap-4 w-full">
+          <form onSubmit={submit} className="grid gap-3.5 w-full">
             
             {/* ======================================================== */}
             {/* 1) STEP 1: CHOOSE CUSTOMER (AUTO-FILL ALL FIELDS) */}
             {/* ======================================================== */}
-            <div className="space-y-2 w-full">
+            <div className="space-y-1.5 w-full">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-black grid place-items-center">
+                  <span className="h-4.5 w-4.5 rounded-full bg-blue-600 text-white text-[10px] font-black grid place-items-center">
                     1
                   </span>
                   <span>Choose Customer (Auto-Fill)</span>
@@ -650,16 +633,16 @@ export default function TechHome() {
                   <button
                     type="button"
                     onClick={handleClearSelectedCustomer}
-                    className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                    className="text-[11px] sm:text-xs text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
                   >
-                    <FiX size={13} />
-                    <span>Clear selection</span>
+                    <FiX size={12} />
+                    <span>Clear</span>
                   </button>
                 )}
               </div>
 
               {!selectedCall ? (
-                /* Unselected State: Big Prominent Action Button */
+                /* Unselected State: Responsive Action Button */
                 <button
                   type="button"
                   onClick={() => {
@@ -667,34 +650,34 @@ export default function TechHome() {
                     setModalTab("all");
                     setCallModalOpen(true);
                   }}
-                  className="w-full border-2 border-dashed border-blue-300 hover:border-blue-500 rounded-2xl p-3.5 sm:p-4 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50 hover:bg-blue-50 flex items-center justify-between gap-3 text-left transition duration-150 active:scale-[0.99] cursor-pointer group shadow-2xs"
+                  className="w-full border-2 border-dashed border-blue-300 hover:border-blue-500 rounded-2xl p-2.5 sm:p-3.5 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50 hover:bg-blue-50 flex items-center justify-between gap-2 text-left transition duration-150 active:scale-[0.99] cursor-pointer group shadow-2xs overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-2xl bg-blue-600 group-hover:bg-blue-700 text-white grid place-items-center text-lg shadow-sm shadow-blue-500/30 shrink-0 transition">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-blue-600 text-white grid place-items-center text-base shadow-sm shadow-blue-500/30 shrink-0">
                       🔍
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-blue-700 transition truncate">
                         Tap to Choose Customer Call
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate">
+                      <p className="text-[10.5px] sm:text-[11px] text-slate-500 truncate">
                         {calls.length > 0
-                          ? `Select from ${calls.length} assigned customer call(s)`
-                          : "Choose from assigned calls to auto-fill all fields"}
+                          ? `Select from ${calls.length} assigned call(s)`
+                          : "Auto-fill all details from assigned call"}
                       </p>
                     </div>
                   </div>
 
-                  <span className="bg-blue-600 group-hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs shrink-0 flex items-center gap-1 transition">
+                  <span className="bg-blue-600 group-hover:bg-blue-700 text-white text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1.5 rounded-xl shadow-xs shrink-0 flex items-center gap-1 transition">
                     <span>Select Call</span>
-                    <span className="text-[10px]">▾</span>
+                    <span className="text-[9px]">▾</span>
                   </span>
                 </button>
               ) : (
                 /* Selected State: Verified Customer Card */
-                <div className="border border-emerald-300/80 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-slate-50/80 rounded-2xl p-3 sm:p-3.5 flex items-start justify-between gap-2.5 shadow-2xs">
-                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                    <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white font-black grid place-items-center text-xs shrink-0 shadow-xs">
+                <div className="border border-emerald-300/80 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-slate-50/80 rounded-2xl p-2.5 sm:p-3.5 flex items-start justify-between gap-2 shadow-2xs w-full overflow-hidden">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white font-black grid place-items-center text-xs shrink-0 shadow-xs">
                       {getInitials(selectedCall.clientName)}
                     </div>
                     <div className="min-w-0 flex-1 space-y-0.5">
@@ -702,8 +685,8 @@ export default function TechHome() {
                         <span className="font-black text-xs sm:text-sm text-slate-900 truncate">
                           {selectedCall.clientName || "Customer"}
                         </span>
-                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.2 rounded-full border border-emerald-300 shrink-0 flex items-center gap-1">
-                          <FiCheck size={10} /> Auto-Filled
+                        <span className="bg-emerald-100 text-emerald-800 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full border border-emerald-300 shrink-0 flex items-center gap-0.5">
+                          <FiCheck size={9} /> Auto-Filled
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-600 font-semibold truncate flex items-center gap-1">
@@ -713,8 +696,8 @@ export default function TechHome() {
                           <span className="text-slate-400">• {selectedCall.type}</span>
                         )}
                       </div>
-                      <div className="text-[10.5px] text-slate-500 line-clamp-1 flex items-center gap-1">
-                        <FiMapPin size={10} className="text-slate-400 shrink-0" />
+                      <div className="text-[10px] sm:text-[10.5px] text-slate-500 line-clamp-1 flex items-center gap-1">
+                        <FiMapPin size={9} className="text-slate-400 shrink-0" />
                         <span className="truncate">{selectedCall.address || "Address not provided"}</span>
                       </div>
                     </div>
@@ -726,7 +709,7 @@ export default function TechHome() {
                       setCallSearch("");
                       setCallModalOpen(true);
                     }}
-                    className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold px-2.5 py-1.5 rounded-xl shrink-0 shadow-2xs transition cursor-pointer"
+                    className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold px-2 py-1 rounded-xl shrink-0 shadow-2xs transition cursor-pointer"
                   >
                     Change
                   </button>
@@ -735,11 +718,11 @@ export default function TechHome() {
             </div>
 
             {/* ======================================================== */}
-            {/* 2) STEP 2: SERVICE STATUS OPTIONS */}
+            {/* 2) STEP 2: SERVICE STATUS OPTIONS (2x2 RESPONSIVE GRID) */}
             {/* ======================================================== */}
-            <div className="space-y-2 w-full pt-1">
+            <div className="space-y-1.5 w-full pt-0.5">
               <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-black grid place-items-center">
+                <span className="h-4.5 w-4.5 rounded-full bg-blue-600 text-white text-[10px] font-black grid place-items-center">
                   2
                 </span>
                 <span>Service Outcome / Status</span>
@@ -759,35 +742,35 @@ export default function TechHome() {
                         setForm((p) => ({ ...p, status: opt.id }));
                         vibrate([15]);
                       }}
-                      className={`relative min-w-0 flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-2xl border transition-all duration-150 active:scale-95 cursor-pointer text-left ${
+                      className={`relative min-w-0 flex items-center gap-2 p-2 sm:p-2.5 rounded-2xl border transition-all duration-150 active:scale-95 cursor-pointer text-left overflow-hidden ${
                         isSelected ? opt.activeClass : opt.inactiveClass
                       }`}
                     >
                       <div
-                        className={`h-8 w-8 rounded-xl grid place-items-center shrink-0 text-sm ${
+                        className={`h-7 w-7 sm:h-8 sm:w-8 rounded-xl grid place-items-center shrink-0 text-xs sm:text-sm ${
                           isSelected
                             ? "bg-white/20 text-white"
                             : "bg-slate-100 text-slate-700"
                         }`}
                       >
-                        <Icon size={14} />
+                        <Icon size={12} />
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="font-extrabold text-xs sm:text-sm leading-tight truncate">
+                        <div className="font-extrabold text-[11px] sm:text-xs leading-tight break-words">
                           {opt.label}
                         </div>
                         <div
-                          className={`text-[9.5px] sm:text-[10px] font-medium leading-none mt-0.5 truncate ${
-                            isSelected ? "text-white/80" : "text-slate-400"
+                          className={`text-[9px] sm:text-[9.5px] font-semibold leading-none mt-0.5 truncate ${
+                            isSelected ? "text-white/85" : "text-slate-400"
                           }`}
                         >
-                          {isSelected ? "Selected ✓" : "Tap to select"}
+                          {isSelected ? "Selected ✓" : "Select"}
                         </div>
                       </div>
 
                       {isSelected && (
-                        <div className="h-4 w-4 rounded-full bg-white text-slate-900 grid place-items-center text-[10px] font-black shrink-0 shadow-xs">
+                        <div className="h-3.5 w-3.5 rounded-full bg-white text-slate-900 grid place-items-center text-[9px] font-black shrink-0 shadow-xs">
                           ✓
                         </div>
                       )}
@@ -800,19 +783,18 @@ export default function TechHome() {
             {/* ======================================================== */}
             {/* 3) STEP 3: CUSTOMER DETAILS (AUTO-FILLED + EDITABLE) */}
             {/* ======================================================== */}
-            <div className="space-y-3 w-full pt-1 border-t border-slate-100">
+            <div className="space-y-2.5 w-full pt-1 border-t border-slate-100">
               <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-black grid place-items-center">
+                <span className="h-4.5 w-4.5 rounded-full bg-blue-600 text-white text-[10px] font-black grid place-items-center">
                   3
                 </span>
                 <span>Customer & Payment Details</span>
               </label>
 
-              {/* Client Name & Phone in 2 Columns on desktop, 1 on narrow mobile */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
                 <div className="space-y-1 min-w-0">
-                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
-                    <FiUser size={12} className="text-blue-600 shrink-0" />
+                  <label className="text-[11px] sm:text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
+                    <FiUser size={11} className="text-blue-600 shrink-0" />
                     <span>Customer Name *</span>
                   </label>
                   <input
@@ -823,13 +805,13 @@ export default function TechHome() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, clientName: e.target.value }))
                     }
-                    className="w-full border border-slate-200/90 rounded-xl px-3.5 py-2.5 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm shadow-2xs transition"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs transition"
                   />
                 </div>
 
                 <div className="space-y-1 min-w-0">
-                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
-                    <FaPhoneAlt size={11} className="text-blue-600 shrink-0" />
+                  <label className="text-[11px] sm:text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
+                    <FaPhoneAlt size={10} className="text-blue-600 shrink-0" />
                     <span>Phone Number *</span>
                   </label>
                   <input
@@ -841,45 +823,42 @@ export default function TechHome() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, phone: e.target.value }))
                     }
-                    className="w-full border border-slate-200/90 rounded-xl px-3.5 py-2.5 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm shadow-2xs transition"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs transition"
                   />
                 </div>
               </div>
 
-              {/* Customer Address */}
               <div className="space-y-1 w-full">
-                <label className="text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
-                  <FiMapPin size={12} className="text-blue-600 shrink-0" />
+                <label className="text-[11px] sm:text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
+                  <FiMapPin size={11} className="text-blue-600 shrink-0" />
                   <span>Service Address *</span>
                 </label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="Complete customer street address, apartment, locality..."
+                  placeholder="Street address, locality, house no..."
                   value={form.address}
                   onChange={(e) =>
                     setForm((p) => ({ ...p, address: e.target.value }))
                   }
-                  className="w-full border border-slate-200/90 rounded-xl px-3.5 py-2 bg-slate-50 focus:bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm shadow-2xs transition resize-none"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 focus:bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs transition resize-none"
                 />
               </div>
 
-              {/* Service Fee / Payment */}
               <div className="space-y-1 w-full">
-                <label className="text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
-                  <FaMoneyBillWave size={12} className="text-emerald-600 shrink-0" />
+                <label className="text-[11px] sm:text-xs font-bold text-slate-600 flex items-center gap-1 truncate">
+                  <FaMoneyBillWave size={11} className="text-emerald-600 shrink-0" />
                   <span>Service Charge / Payment (₹)</span>
                 </label>
                 <input
                   type="number"
                   inputMode="numeric"
-                  pattern="[0-9]*"
                   placeholder="0"
                   value={form.payment}
                   onChange={(e) =>
                     setForm((p) => ({ ...p, payment: e.target.value }))
                   }
-                  className="w-full border border-slate-200/90 rounded-xl px-3.5 py-2.5 bg-slate-50 focus:bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm shadow-2xs transition"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs sm:text-sm shadow-2xs transition"
                 />
               </div>
             </div>
@@ -887,18 +866,18 @@ export default function TechHome() {
             {/* ======================================================== */}
             {/* 4) STEP 4: STICKER / SERVICE PROOF PHOTO */}
             {/* ======================================================== */}
-            <div className="space-y-2 w-full pt-1 border-t border-slate-100">
+            <div className="space-y-1.5 w-full pt-1 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-black grid place-items-center">
+                  <span className="h-4.5 w-4.5 rounded-full bg-blue-600 text-white text-[10px] font-black grid place-items-center">
                     4
                   </span>
-                  <span>Sticker Photo (Camera Upload) *</span>
+                  <span>Sticker Photo (Camera) *</span>
                 </label>
 
                 {stickerUploadedUrl && (
-                  <span className="text-[11px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                    <FiCheck size={11} /> Photo Uploaded
+                  <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <FiCheck size={10} /> Uploaded
                   </span>
                 )}
               </div>
@@ -908,15 +887,15 @@ export default function TechHome() {
                   type="button"
                   onClick={openCameraForSticker}
                   disabled={stickerUploading}
-                  className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer disabled:opacity-60"
+                  className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer disabled:opacity-60"
                 >
-                  <FiCamera size={16} />
-                  <span>
+                  <FiCamera size={14} />
+                  <span className="truncate">
                     {stickerUploading
                       ? `Uploading... ${stickerUploadProgress}%`
                       : stickerUploadedUrl
-                      ? "Retake / Change Sticker Photo"
-                      : "Open Camera & Take Sticker Photo"}
+                      ? "Change Sticker Photo"
+                      : "Open Camera & Take Photo"}
                   </span>
                 </button>
 
@@ -929,7 +908,7 @@ export default function TechHome() {
                       setForm((p) => ({ ...p, stickerUrl: "" }));
                       vibrate([10]);
                     }}
-                    className="px-3 py-3 border border-slate-200 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
+                    className="px-2.5 py-2.5 border border-slate-200 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
                   >
                     Clear
                   </button>
@@ -945,19 +924,18 @@ export default function TechHome() {
                 className="hidden"
               />
 
-              {/* Live Preview Thumbnail */}
               {stickerPreview && (
-                <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center gap-2.5 p-2 bg-slate-50 rounded-2xl border border-slate-200/80 w-full overflow-hidden">
                   <img
                     src={stickerPreview}
-                    alt="Sticker proof preview"
-                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs"
+                    alt="Sticker preview"
+                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-xs shrink-0"
                   />
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>Sticker Photo Captured</span>
+                      <span className="truncate">Photo Captured</span>
                       {stickerUploadedUrl && (
-                        <span className="text-[10px] text-emerald-700 bg-emerald-100 font-extrabold px-1.5 py-0.2 rounded">
+                        <span className="text-[9.5px] text-emerald-700 bg-emerald-100 font-extrabold px-1.5 rounded">
                           Ready ✓
                         </span>
                       )}
@@ -970,8 +948,8 @@ export default function TechHome() {
                         />
                       </div>
                     ) : (
-                      <p className="text-[11px] text-slate-500 truncate">
-                        Ultra-compressed & optimized for fast submission.
+                      <p className="text-[10.5px] text-slate-500 truncate">
+                        Compressed & ready for instant submission.
                       </p>
                     )}
                   </div>
@@ -982,10 +960,10 @@ export default function TechHome() {
             {/* ======================================================== */}
             {/* 5) STEP 5: CLIENT SIGNATURE */}
             {/* ======================================================== */}
-            <div className="space-y-2 w-full pt-1 border-t border-slate-100">
+            <div className="space-y-1.5 w-full pt-1 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-black grid place-items-center">
+                  <span className="h-4.5 w-4.5 rounded-full bg-blue-600 text-white text-[10px] font-black grid place-items-center">
                     5
                   </span>
                   <span>Customer Signature (Sign in box)</span>
@@ -994,9 +972,9 @@ export default function TechHome() {
                 <button
                   type="button"
                   onClick={clearSig}
-                  className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer"
+                  className="text-[11px] sm:text-xs text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer"
                 >
-                  Clear Signature
+                  Clear
                 </button>
               </div>
 
@@ -1009,19 +987,20 @@ export default function TechHome() {
                   ref={sigRef}
                   canvasProps={{
                     width: canvasWidth,
-                    height: 160,
-                    className: "sigCanvas w-full bg-white block",
+                    height: 140,
+                    className: "sigCanvas w-full max-w-full bg-white block",
                     style: {
                       width: "100%",
                       maxWidth: "100%",
-                      height: "160px",
+                      height: "140px",
                       touchAction: "none",
                       display: "block",
+                      boxSizing: "border-box",
                     },
                   }}
                 />
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[10px] sm:text-[11px] text-slate-400">
                 Please ask customer to draw digital signature inside the box.
               </p>
             </div>
@@ -1032,15 +1011,15 @@ export default function TechHome() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-extrabold py-3.5 rounded-2xl text-xs sm:text-sm shadow-md shadow-blue-500/25 active:scale-[0.98] transition duration-150 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2 mt-2"
+              className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-extrabold py-3 rounded-2xl text-xs sm:text-sm shadow-md shadow-blue-500/25 active:scale-[0.98] transition duration-150 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2 mt-1"
             >
               {submitting ? (
                 <>
                   <span className="inline-block border-2 w-4 h-4 rounded-full border-white border-t-transparent animate-spin" />
-                  <span>Submitting Service Form...</span>
+                  <span>Submitting...</span>
                 </>
               ) : (
-                <span>
+                <span className="truncate">
                   Submit Service Form {selectedCall ? `(${selectedCall.clientName})` : ""}
                 </span>
               )}
@@ -1067,7 +1046,6 @@ export default function TechHome() {
               exit={{ scale: 0.92, opacity: 0, y: 15 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Top Header */}
               <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 mb-2 gap-2">
                 <div className="min-w-0 flex-1">
                   <h2 className="font-extrabold text-base text-slate-900 truncate">
@@ -1078,12 +1056,12 @@ export default function TechHome() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div className="rounded-xl bg-slate-100 p-0.5 text-xs flex gap-1">
                     <button
                       type="button"
                       onClick={() => setModalTab("all")}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-lg font-bold transition cursor-pointer text-[11px] ${
                         modalTab === "all"
                           ? "bg-white text-blue-600 shadow-2xs"
                           : "text-slate-600"
@@ -1094,7 +1072,7 @@ export default function TechHome() {
                     <button
                       type="button"
                       onClick={() => setModalTab("pending")}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-lg font-bold transition cursor-pointer text-[11px] ${
                         modalTab === "pending"
                           ? "bg-white text-amber-600 shadow-2xs"
                           : "text-slate-600"
@@ -1114,7 +1092,6 @@ export default function TechHome() {
                 </div>
               </div>
 
-              {/* Search Bar */}
               <div className="relative mb-2 w-full">
                 <input
                   className="w-full border border-slate-200/90 rounded-xl px-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
@@ -1133,7 +1110,6 @@ export default function TechHome() {
                 )}
               </div>
 
-              {/* Calls List */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-0.5 py-1 min-h-0">
                 {callsLoading && (
                   <div className="space-y-2 py-1">
@@ -1210,7 +1186,6 @@ export default function TechHome() {
                   })}
               </div>
 
-              {/* Close Modal Button */}
               <div className="mt-2.5 pt-2.5 border-t border-slate-100">
                 <button
                   type="button"
@@ -1225,9 +1200,7 @@ export default function TechHome() {
         )}
       </AnimatePresence>
 
-      {/* ======================================================== */}
-      {/* 🎉 HAPPY SUCCESS OVERLAY */}
-      {/* ======================================================== */}
+      {/* HAPPY SUCCESS OVERLAY */}
       <AnimatePresence>
         {showSuccessOverlay && (
           <motion.div

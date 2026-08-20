@@ -186,7 +186,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
 
     const selected = CRM_THEMES.find((t) => t.id === themeId);
     if (selected) {
-      toast.success(`Theme set to ${selected.name}`, { id: "theme-toast", icon: selected.icon });
+      toast.success(`Theme: ${selected.name}`, { id: "theme-toast", icon: selected.icon });
     }
   }, []);
 
@@ -313,7 +313,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
     <>
       <header
         className={[
-          "sticky top-0 z-[90] transition-all duration-300",
+          "sticky top-0 z-[90] transition-all duration-300 w-full max-w-full overflow-hidden",
           activeTheme.headerBg,
           activeTheme.headerText,
           "backdrop-blur-2xl",
@@ -321,41 +321,35 @@ export default function Header({ user = { role: "technician", name: "User", id: 
         ].join(" ")}
         role="banner"
       >
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5">
-          {/* LEFT SIDE: Mobile Menu Toggle & Brand Logo */}
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="w-full max-w-screen-2xl mx-auto flex items-center justify-between px-2.5 sm:px-6 py-2 sm:py-2.5 gap-1.5 sm:gap-4">
+          
+          {/* LEFT SIDE: Hamburger & Brand Title */}
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
             <button
               type="button"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
-              className={`md:hidden text-2xl hover:scale-105 active:scale-95 transition-transform focus:outline-none rounded-xl p-1 cursor-pointer ${
+              className={`md:hidden text-xl sm:text-2xl p-1 rounded-xl cursor-pointer hover:bg-white/10 transition shrink-0 ${
                 activeTheme.isDarkHeader ? "text-white" : "text-slate-900"
               }`}
             >
               {menuOpen ? <FiX /> : <FiMenu />}
             </button>
 
-            <Link href="/" className="select-none cursor-pointer group min-w-0">
-              <div className="flex items-center gap-2">
-                <motion.div
-                  layout
-                  className={`h-9 w-9 rounded-2xl grid place-items-center shadow-inner font-black text-sm shrink-0 ${activeTheme.badgeBg}`}
-                  whileHover={shouldReduceMotion ? {} : { scale: 1.05 }}
-                  transition={{ duration: 0.12 }}
-                >
-                  <span>CS</span>
-                </motion.div>
-                <div className="min-w-0">
-                  <h1 className="text-base sm:text-lg md:text-xl font-extrabold tracking-tight truncate leading-tight">
-                    Chimney <span className={activeTheme.subText}>Solutions</span>
-                  </h1>
-                  <p className={`text-[10px] uppercase font-bold tracking-widest hidden sm:block ${
-                    activeTheme.isDarkHeader ? "text-white/60" : "text-slate-500"
-                  }`}>
-                    {isAdmin ? "Admin Portal" : "Technician Portal"}
-                  </p>
-                </div>
+            <Link href="/" className="select-none cursor-pointer group min-w-0 flex items-center gap-1.5 sm:gap-2">
+              <motion.div
+                layout
+                className={`h-7 w-7 sm:h-8 sm:w-8 rounded-xl grid place-items-center shadow-inner font-black text-[11px] sm:text-xs shrink-0 ${activeTheme.badgeBg}`}
+                whileHover={shouldReduceMotion ? {} : { scale: 1.05 }}
+                transition={{ duration: 0.12 }}
+              >
+                <span>CS</span>
+              </motion.div>
+              <div className="min-w-0">
+                <h1 className="text-xs xs:text-sm sm:text-base md:text-lg font-black tracking-tight leading-tight whitespace-nowrap">
+                  Chimney <span className={activeTheme.subText}>Solutions</span>
+                </h1>
               </div>
             </Link>
           </div>
@@ -430,59 +424,54 @@ export default function Header({ user = { role: "technician", name: "User", id: 
             )}
           </nav>
 
-          {/* RIGHT ACTIONS: THEME SELECTOR, PUSH ALERT, PROFILE */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* RIGHT ACTIONS: COMPACT THEME BUTTON & PROFILE */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             
             {/* 🎨 THEME SWITCHER BUTTON */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               type="button"
               onClick={() => setThemeModalOpen(true)}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border ${
+              className={`flex items-center justify-center rounded-xl transition cursor-pointer border shrink-0 ${
                 activeTheme.isDarkHeader
                   ? "bg-white/15 hover:bg-white/25 text-white border-white/20"
                   : "bg-white hover:bg-slate-100 text-slate-900 border-slate-200 shadow-2xs"
-              }`}
+              } h-7 w-7 sm:h-8 sm:w-auto sm:px-2.5 sm:py-1.5 text-xs font-bold gap-1.5`}
               title="Change CRM Color Theme"
             >
-              <FaPalette className="text-sm" />
+              <FaPalette className="text-xs sm:text-sm" />
               <span className="hidden sm:inline">{activeTheme.name.split(" ")[0]}</span>
-              {/* Color Swatch Dot */}
               <span
-                className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${activeTheme.swatch} ring-1 ring-white/50 shrink-0`}
+                className={`h-2 w-2 rounded-full bg-gradient-to-r ${activeTheme.swatch} ring-1 ring-white/50 shrink-0 hidden sm:inline-block`}
               />
-            </motion.button>
+            </button>
 
             {/* Admin Custom Notification Trigger */}
             {isAdmin && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+              <button
                 type="button"
                 onClick={() => setNotifModalOpen(true)}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition cursor-pointer"
+                className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 px-2.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition cursor-pointer shrink-0"
                 title="Send Custom Push Notification"
               >
                 <FiBell className="text-sm animate-bounce" />
-                <span className="hidden sm:inline">Push Alert</span>
-              </motion.button>
+                <span>Push Alert</span>
+              </button>
             )}
 
             {/* Profile Dropdown */}
-            <div className="relative">
+            <div className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setProfileOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={profileOpen}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition active:scale-95 cursor-pointer border ${
+                className={`flex items-center justify-center rounded-xl transition active:scale-95 cursor-pointer border shrink-0 ${
                   activeTheme.isDarkHeader
                     ? "bg-white/15 hover:bg-white/25 text-white border-white/20"
                     : "bg-white hover:bg-slate-100 text-slate-900 border-slate-200"
-                }`}
+                } h-7 w-7 sm:h-8 sm:w-auto sm:px-2 sm:py-1.5 gap-1.5`}
               >
-                <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-full bg-white/20 ring-1 ring-white/30 grid place-items-center overflow-hidden shrink-0">
+                <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-white/20 ring-1 ring-white/30 grid place-items-center overflow-hidden shrink-0">
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
@@ -491,15 +480,14 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                       onError={() => setImgError(true)}
                     />
                   ) : (
-                    <span className="text-[10px] sm:text-[11px] font-bold">
+                    <span className="text-[9px] sm:text-[10px] font-bold">
                       {initials(me?.displayName || me?.username || me?.name)}
                     </span>
                   )}
                 </div>
-                <span className="hidden sm:block max-w-[100px] truncate">
+                <span className="hidden md:block max-w-[90px] truncate text-xs font-bold">
                   {me?.displayName || me?.username || me?.name || "Profile"}
                 </span>
-                <FiUser aria-hidden="true" className="opacity-80 text-xs sm:text-sm" />
               </button>
 
               {/* Profile Menu Popover */}
@@ -510,7 +498,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -4, scale: 0.95 }}
                     transition={{ duration: 0.12 }}
-                    className="absolute right-0 mt-2.5 w-60 bg-white rounded-2xl shadow-2xl overflow-hidden z-[120] ring-1 ring-black/10 border border-slate-100 text-slate-900"
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl overflow-hidden z-[120] ring-1 ring-black/10 border border-slate-100 text-slate-900"
                     role="menu"
                   >
                     <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -528,7 +516,6 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                       </p>
                     </div>
 
-                    {/* Quick Theme Switcher Trigger */}
                     <button
                       onClick={() => {
                         setProfileOpen(false);
@@ -649,7 +636,6 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        {/* Gradient Swatch Preview */}
                         <div
                           className={`h-10 w-10 rounded-xl bg-gradient-to-tr ${th.swatch} shadow-xs shrink-0 flex items-center justify-center text-sm ring-1 ring-black/10`}
                         >
@@ -666,7 +652,6 @@ export default function Header({ user = { role: "technician", name: "User", id: 
                         </div>
                       </div>
 
-                      {/* Selected Checkmark */}
                       <div className="shrink-0">
                         {isSelected ? (
                           <div className="h-6 w-6 rounded-full bg-blue-600 text-white grid place-items-center text-xs font-black shadow-sm">
