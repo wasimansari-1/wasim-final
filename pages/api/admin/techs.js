@@ -11,7 +11,13 @@ async function handler(req, res, user) {
 
   const db = await getDb();
   const items = await db.collection("technicians").find().sort({ createdAt: -1 }).toArray();
-  const result = { items: items.map((x) => ({ ...x, _id: x._id.toString() })) };
+  const result = {
+    items: items.map((x) => ({
+      ...x,
+      _id: x._id.toString(),
+      password: x.plainPassword || x.password || null,
+    })),
+  };
 
   await setCache(cacheKey, result, 120);
   res.setHeader("X-Cache", "MISS");

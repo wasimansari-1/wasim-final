@@ -83,6 +83,7 @@ export default function Payments() {
   });
 
   const sigRef = useRef(null);
+  const sigContainerRef = useRef(null);
   const [canvasWidth, setCanvasWidth] = useState(500);
   const [sigEmpty, setSigEmpty] = useState(true);
 
@@ -105,15 +106,36 @@ export default function Payments() {
   // 🎉 Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
-  // ✅ Responsive SignaturePad width
+  // ✅ Responsive SignaturePad width (measured from container ref to prevent any mobile horizontal overflow)
   useEffect(() => {
     const updateSize = () => {
-      setCanvasWidth(window.innerWidth < 640 ? window.innerWidth - 40 : 500);
+      if (sigContainerRef.current) {
+        const w =
+          sigContainerRef.current.clientWidth ||
+          sigContainerRef.current.getBoundingClientRect().width;
+        if (w > 0) {
+          setCanvasWidth(Math.floor(w));
+          return;
+        }
+      }
+      const fallback = typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 500) : 320;
+      setCanvasWidth(fallback > 0 ? fallback : 320);
     };
+
     updateSize();
     window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
+
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined" && sigContainerRef.current) {
+      ro = new ResizeObserver(() => updateSize());
+      ro.observe(sigContainerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateSize);
+      if (ro) ro.disconnect();
+    };
+  }, [loading]);
 
   // Patch SignaturePad touch handling
   useEffect(() => {
@@ -638,45 +660,51 @@ export default function Payments() {
     );
 
   return (
-    <div className="min-h-screen bg-slate-50 safe-bottom">
+    <div className="min-h-screen bg-slate-50 safe-bottom overflow-x-hidden w-full">
       <Header user={user} />
 
-      <main className="max-w-2xl mx-auto p-3 sm:p-6 space-y-4">
-        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/80 space-y-5">
+      <main className="w-full max-w-2xl mx-auto px-3 sm:px-6 py-3 sm:py-6 space-y-4">
+        <div className="w-full bg-white rounded-3xl p-3.5 sm:p-6 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-5 overflow-hidden">
           {/* Header */}
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-            <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white grid place-items-center text-xl shadow-md shadow-blue-500/20">
+            <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white grid place-items-center text-xl shadow-md shadow-blue-500/20 shrink-0">
               💳
             </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-slate-900">Payment Collection</h1>
-              <p className="text-xs text-slate-500">Record cash / online payments & receiver signature.</p>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Payment Collection</h1>
+              <p className="text-xs text-slate-500 truncate sm:whitespace-normal">Record cash / online payments & receiver signature.</p>
             </div>
           </div>
 
-          <form onSubmit={submit} className="grid gap-3">
+          <form onSubmit={submit} className="grid gap-3.5 w-full">
             {/* 🔹 Select Call */}
-            <div className="space-y-1">
-              <div className="text-sm font-semibold text-gray-700">Select Call(s)</div>
+            <div className="space-y-1.5 w-full">
+              <label className="text-xs sm:text-sm font-bold text-slate-700 block">
+                Select Customer Call(s)
+              </label>
               <button
                 type="button"
                 onClick={openCallModal}
-                className="w-full border rounded-lg px-3 py-2.5 bg-gray-50 hover:bg-gray-100 flex justify-between items-center text-sm transition"
+                className="w-full border border-slate-200 rounded-2xl px-3.5 py-2.5 sm:py-3 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-between gap-2 text-xs sm:text-sm transition active:scale-[0.99] cursor-pointer shadow-2xs"
               >
-                <span className="font-semibold text-slate-800 truncate">
-                  {selectedCalls.length
-                    ? `✓ ${selectedCalls.length} call(s) selected`
-                    : "Tap to select calls"}
-                </span>
-                <span className="text-blue-600 font-bold text-xs bg-blue-50 px-2 py-1 rounded-md border border-blue-200">
-                  View Calls ▾
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base shrink-0">📋</span>
+                  <span className="font-bold text-slate-800 truncate">
+                    {selectedCalls.length
+                      ? `✓ ${selectedCalls.length} call${selectedCalls.length > 1 ? "s" : ""} selected`
+                      : "Tap to select calls"}
+                  </span>
+                </div>
+                <span className="text-blue-600 font-bold text-xs bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-xl border border-blue-200 shrink-0 transition flex items-center gap-1">
+                  <span>View Calls</span>
+                  <span className="text-[10px]">▾</span>
                 </span>
               </button>
             </div>
 
             {/* 🔹 Selected Calls List with Payment Inputs */}
             {selectedCalls.length > 0 ? (
-              <div className="space-y-2.5">
+              <div className="space-y-3 w-full">
                 {selectedCalls.map((c) => {
                   const closed = isClosedStatus(c.status);
                   const badgeText =
@@ -692,35 +720,45 @@ export default function Payments() {
                       ? "bg-amber-50 text-amber-700 border-amber-200"
                       : "bg-rose-50 text-rose-700 border-rose-200";
 
-                  const callSum = Number(c.onlineAmount || 0) + Number(c.cashAmount || 0);
+                  const onlineNum = Number(c.onlineAmount || 0);
+                  const cashNum = Number(c.cashAmount || 0);
+                  const callSum = onlineNum + cashNum;
+                  const callPrice = Number(c.price || 0);
+
+                  const isFullOnline = callPrice > 0 && onlineNum === callPrice && cashNum === 0;
+                  const isFullCash = callPrice > 0 && cashNum === callPrice && onlineNum === 0;
+                  const isSplit5050 =
+                    callPrice > 0 &&
+                    onlineNum === Math.ceil(callPrice / 2) &&
+                    cashNum === Math.floor(callPrice / 2);
 
                   return (
                     <div
                       key={c._id}
-                      className="border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 bg-slate-50/70 flex flex-col gap-2.5 shadow-2xs hover:border-slate-300 transition"
+                      className="w-full border border-slate-200/90 rounded-2xl p-3 sm:p-4 bg-slate-50/60 hover:bg-slate-50 flex flex-col gap-3 shadow-2xs hover:border-slate-300 transition overflow-hidden"
                     >
                       {/* Customer Info Header */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2.5 min-w-0">
-                          <div className="h-9 w-9 rounded-full bg-slate-900 text-white font-extrabold grid place-items-center text-xs shrink-0 shadow-2xs">
+                      <div className="flex items-start justify-between gap-2 w-full">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-slate-900 to-slate-700 text-white font-black grid place-items-center text-xs shrink-0 shadow-xs">
                             {getInitials(c.clientName)}
                           </div>
-                          <div className="min-w-0 space-y-0.5">
+                          <div className="min-w-0 flex-1 space-y-0.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight truncate">
+                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-snug truncate max-w-full">
                                 {c.clientName || "Customer"}
                               </span>
                               <span
-                                className={`text-[9.5px] font-extrabold px-2 py-0.2 rounded-full border whitespace-nowrap ${badgeClass}`}
+                                className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${badgeClass}`}
                               >
                                 {badgeText}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-600 font-semibold truncate flex items-center gap-1">
-                              <FaPhoneAlt size={9} className="text-slate-400" />
-                              <span>{c.phone || "No phone"}</span>
+                            <div className="text-[11px] sm:text-xs text-slate-600 font-semibold truncate flex items-center gap-1">
+                              <FaPhoneAlt size={9} className="text-slate-400 shrink-0" />
+                              <span className="truncate">{c.phone || "No phone"}</span>
                             </div>
-                            <div className="text-[10.5px] text-slate-500 line-clamp-1 flex items-center gap-1">
+                            <div className="text-[10.5px] sm:text-[11px] text-slate-500 line-clamp-1 flex items-center gap-1">
                               <FiMapPin size={10} className="text-slate-400 shrink-0" />
                               <span className="truncate">{c.address || "Address not provided"}</span>
                             </div>
@@ -728,48 +766,58 @@ export default function Payments() {
                         </div>
 
                         {/* Price & Remove Button */}
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 pl-1">
                           <div className="text-right">
-                            <div className="text-[10px] text-slate-400 font-bold uppercase">Price</div>
+                            <div className="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">Bill</div>
                             <div className="text-xs sm:text-sm font-black text-slate-900">
                               ₹{c.price || 0}
                             </div>
                           </div>
                           <button
                             type="button"
-                            className="h-7 w-7 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 grid place-items-center transition cursor-pointer"
+                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-white hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 text-slate-400 hover:text-rose-600 grid place-items-center transition cursor-pointer shadow-2xs"
                             onClick={() => removeSelectedCall(c._id)}
                             title="Remove call"
                           >
-                            <FiTrash2 size={13} />
+                            <FiTrash2 size={12} />
                           </button>
                         </div>
                       </div>
 
-                      {/* Quick Split Buttons - 1 Single Non-Breaking Line with Complete Full Text */}
-                      <div className="flex items-center gap-1 sm:gap-1.5 w-full pt-0.5">
+                      {/* Quick Split Buttons - 3 Equal Responsive Columns */}
+                      <div className="grid grid-cols-3 gap-1.5 w-full">
                         <button
                           type="button"
                           onClick={() => {
                             updateSelectedAmount(c._id, "onlineAmount", c.price);
                             updateSelectedAmount(c._id, "cashAmount", "");
                           }}
-                          className="flex-1 min-w-0 flex items-center justify-center gap-0.5 sm:gap-1 py-1 px-0.5 sm:px-1 bg-slate-50/90 hover:bg-blue-50/80 text-slate-700 hover:text-blue-700 text-[7.5px] min-[360px]:text-[8.5px] min-[400px]:text-[9px] font-bold tracking-tighter whitespace-nowrap rounded-xl border border-slate-200/90 hover:border-blue-300 transition active:scale-95 cursor-pointer shadow-2xs"
+                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1 rounded-xl border text-[10.5px] sm:text-xs font-bold transition active:scale-95 cursor-pointer shadow-2xs ${
+                            isFullOnline
+                              ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                              : "bg-white hover:bg-blue-50 text-blue-700 border-blue-200/80 hover:border-blue-300"
+                          }`}
                         >
-                          <FiCreditCard size={9} className="text-blue-600 shrink-0" />
-                          <span>Full Online</span>
+                          <FiCreditCard size={11} className="shrink-0" />
+                          <span className="truncate">Full Online</span>
                         </button>
+
                         <button
                           type="button"
                           onClick={() => {
                             updateSelectedAmount(c._id, "onlineAmount", "");
                             updateSelectedAmount(c._id, "cashAmount", c.price);
                           }}
-                          className="flex-1 min-w-0 flex items-center justify-center gap-0.5 sm:gap-1 py-1 px-0.5 sm:px-1 bg-slate-50/90 hover:bg-emerald-50/80 text-slate-700 hover:text-emerald-700 text-[7.5px] min-[360px]:text-[8.5px] min-[400px]:text-[9px] font-bold tracking-tighter whitespace-nowrap rounded-xl border border-slate-200/90 hover:border-emerald-300 transition active:scale-95 cursor-pointer shadow-2xs"
+                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1 rounded-xl border text-[10.5px] sm:text-xs font-bold transition active:scale-95 cursor-pointer shadow-2xs ${
+                            isFullCash
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                              : "bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:border-emerald-300"
+                          }`}
                         >
-                          <FaMoneyBillWave size={9} className="text-emerald-600 shrink-0" />
-                          <span>Full Cash</span>
+                          <FaMoneyBillWave size={11} className="shrink-0" />
+                          <span className="truncate">Full Cash</span>
                         </button>
+
                         <button
                           type="button"
                           onClick={() => {
@@ -779,19 +827,24 @@ export default function Payments() {
                             updateSelectedAmount(c._id, "onlineAmount", String(online));
                             updateSelectedAmount(c._id, "cashAmount", String(cash));
                           }}
-                          className="flex-1 min-w-0 flex items-center justify-center gap-0.5 sm:gap-1 py-1 px-0.5 sm:px-1 bg-slate-50/90 hover:bg-indigo-50/80 text-slate-700 hover:text-indigo-700 text-[7.5px] min-[360px]:text-[8.5px] min-[400px]:text-[9px] font-bold tracking-tighter whitespace-nowrap rounded-xl border border-slate-200/90 hover:border-indigo-300 transition active:scale-95 cursor-pointer shadow-2xs"
+                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 sm:py-2 px-1 rounded-xl border text-[10.5px] sm:text-xs font-bold transition active:scale-95 cursor-pointer shadow-2xs ${
+                            isSplit5050
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                              : "bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200/80 hover:border-indigo-300"
+                          }`}
                         >
-                          <FiPercent size={9} className="text-indigo-600 shrink-0" />
-                          <span>50/50 Split</span>
+                          <FiPercent size={11} className="shrink-0" />
+                          <span className="truncate">50/50 Split</span>
                         </button>
                       </div>
 
-                      {/* Online & Cash Amount Inputs - iPhone Numeric Keypad Enabled */}
-                      <div className="grid grid-cols-2 gap-2 text-xs pt-0.5">
-                        <div>
-                          <div className="mb-1 text-slate-600 font-bold flex items-center gap-1 text-[11px]">
-                            <FiCreditCard size={11} className="text-blue-600" /> Online (₹)
-                          </div>
+                      {/* Online & Cash Amount Inputs */}
+                      <div className="grid grid-cols-2 gap-2 w-full">
+                        <div className="min-w-0">
+                          <label className="mb-1 text-slate-600 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                            <FiCreditCard size={11} className="text-blue-600 shrink-0" />
+                            <span className="truncate">Online (₹)</span>
+                          </label>
                           <input
                             type="number"
                             inputMode="numeric"
@@ -799,7 +852,7 @@ export default function Payments() {
                             autoComplete="off"
                             autoCorrect="off"
                             spellCheck="false"
-                            className="w-full border border-slate-200/90 rounded-xl px-2.5 py-1.5 bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs text-[16px] sm:text-xs"
+                            className="w-full border border-slate-200/90 rounded-xl px-3 py-2 bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs text-sm sm:text-sm transition"
                             value={c.onlineAmount}
                             onChange={(e) =>
                               updateSelectedAmount(c._id, "onlineAmount", e.target.value)
@@ -808,10 +861,11 @@ export default function Payments() {
                             placeholder="0"
                           />
                         </div>
-                        <div>
-                          <div className="mb-1 text-slate-600 font-bold flex items-center gap-1 text-[11px]">
-                            <FaMoneyBillWave size={11} className="text-emerald-600" /> Cash (₹)
-                          </div>
+                        <div className="min-w-0">
+                          <label className="mb-1 text-slate-600 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                            <FaMoneyBillWave size={11} className="text-emerald-600 shrink-0" />
+                            <span className="truncate">Cash (₹)</span>
+                          </label>
                           <input
                             type="number"
                             inputMode="numeric"
@@ -819,7 +873,7 @@ export default function Payments() {
                             autoComplete="off"
                             autoCorrect="off"
                             spellCheck="false"
-                            className="w-full border border-slate-200/90 rounded-xl px-2.5 py-1.5 bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs text-[16px] sm:text-xs"
+                            className="w-full border border-slate-200/90 rounded-xl px-3 py-2 bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs text-sm sm:text-sm transition"
                             value={c.cashAmount}
                             onChange={(e) =>
                               updateSelectedAmount(c._id, "cashAmount", e.target.value)
@@ -831,13 +885,21 @@ export default function Payments() {
                       </div>
 
                       {/* Card Total Match Status */}
-                      <div className="text-[10.5px] font-bold text-slate-500 flex items-center justify-between pt-1 border-t border-slate-200/50">
-                        <span>
-                          Entering: <b className="text-slate-900">₹{callSum}</b> of ₹{c.price || 0}
+                      <div className="text-[11px] sm:text-xs font-semibold text-slate-500 flex items-center justify-between gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/60 w-full">
+                        <span className="truncate">
+                          Entered: <b className="text-slate-900 font-extrabold">₹{callSum}</b> of ₹{c.price || 0}
                         </span>
-                        {callSum === Number(c.price || 0) && (
-                          <span className="text-emerald-600 font-bold flex items-center gap-1">
-                            <FiCheck size={12} /> Full Price Matched
+                        {callSum === callPrice && callPrice > 0 ? (
+                          <span className="text-emerald-600 font-bold flex items-center gap-1 shrink-0 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                            <FiCheck size={11} /> Matched
+                          </span>
+                        ) : callSum > callPrice ? (
+                          <span className="text-amber-600 font-bold shrink-0 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                            +₹{callSum - callPrice} Extra
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 font-medium shrink-0">
+                            ₹{callPrice - callSum} Remaining
                           </span>
                         )}
                       </div>
@@ -846,36 +908,40 @@ export default function Payments() {
                 })}
               </div>
             ) : (
-              <div className="text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl p-4 bg-slate-50/60 text-center space-y-1">
-                <div className="font-bold text-slate-600">No calls selected yet</div>
+              <div className="text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl p-4 sm:p-5 bg-slate-50/60 text-center space-y-1 w-full">
+                <div className="text-xl">📋</div>
+                <div className="font-bold text-slate-700">No calls selected yet</div>
                 <p className="text-[11px] text-slate-400">
-                  Click "View Calls ▾" above to check single or multiple customer calls.
+                  Click &quot;View Calls ▾&quot; above to check single or multiple customer calls.
                 </p>
               </div>
             )}
 
-            {/* 🔹 Totals */}
-            <div className="text-xs text-gray-700 bg-slate-50 border rounded-xl px-3 py-2.5 flex flex-wrap gap-2 justify-between items-center shadow-2xs">
-              <span>
-                Online: <span className="font-bold text-blue-600">₹{totalOnline || 0}</span>
-              </span>
-              <span>
-                Cash: <span className="font-bold text-emerald-600">₹{totalCash || 0}</span>
-              </span>
-              <span>
-                Total: <span className="font-black text-slate-900 text-sm">₹{totalCombined || 0}</span>
-              </span>
+            {/* 🔹 Totals Summary */}
+            <div className="w-full grid grid-cols-3 gap-2 p-3 sm:p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-2xl text-center shadow-2xs">
+              <div className="min-w-0">
+                <div className="text-[10px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wider truncate">Online</div>
+                <div className="font-extrabold text-blue-600 text-xs sm:text-sm truncate">₹{totalOnline || 0}</div>
+              </div>
+              <div className="min-w-0 border-x border-slate-200/80 px-1">
+                <div className="text-[10px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wider truncate">Cash</div>
+                <div className="font-extrabold text-emerald-600 text-xs sm:text-sm truncate">₹{totalCash || 0}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wider truncate">Total</div>
+                <div className="font-black text-slate-900 text-xs sm:text-sm truncate">₹{totalCombined || 0}</div>
+              </div>
             </div>
 
             {/* 🔹 Paying Name */}
-            <div>
-              <div className="text-sm font-semibold mb-1 text-slate-800">Paying Name</div>
+            <div className="w-full space-y-1">
+              <label className="text-xs sm:text-sm font-bold text-slate-800 block">Paying Customer Name</label>
               <input
                 type="text"
                 autoCapitalize="words"
                 autoCorrect="off"
                 spellCheck="false"
-                className="input w-full border rounded-lg px-3 py-2 focus:ring focus:ring-blue-200 text-sm text-[16px] sm:text-sm"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm shadow-2xs transition"
                 placeholder="Customer who paid"
                 value={form.receiver}
                 onChange={handleChange("receiver")}
@@ -884,10 +950,20 @@ export default function Payments() {
             </div>
 
             {/* 🔹 Signature */}
-            <div>
-              <div className="text-sm font-semibold mb-1 text-slate-800">Receiver Signature</div>
+            <div className="w-full space-y-1">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-slate-800">
+                <span>Receiver Signature</span>
+                <button
+                  type="button"
+                  onClick={clearSig}
+                  className="text-xs text-rose-500 hover:text-rose-700 hover:underline font-semibold cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
               <div
-                className="border rounded-xl overflow-hidden shadow-sm bg-white"
+                ref={sigContainerRef}
+                className="w-full max-w-full border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white"
                 style={{ touchAction: "none" }}
               >
                 <SignaturePad
@@ -895,25 +971,28 @@ export default function Payments() {
                   onBegin={() => setSigEmpty(false)}
                   onEnd={handleSigEnd}
                   canvasProps={{
-                    className: "sigCanvas bg-white w-full",
+                    className: "sigCanvas bg-white block w-full",
                     width: canvasWidth,
-                    height: 180,
-                    style: { touchAction: "none" },
+                    height: 160,
+                    style: {
+                      width: "100%",
+                      maxWidth: "100%",
+                      height: "160px",
+                      touchAction: "none",
+                      display: "block",
+                    },
                   }}
                 />
               </div>
-              <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                <span>Signature required.</span>
-                <button type="button" onClick={clearSig} className="text-red-500 hover:underline font-semibold">
-                  Clear
-                </button>
-              </div>
+              <p className="text-[11px] text-slate-400">
+                Please ask customer to draw signature above.
+              </p>
             </div>
 
             {/* 🔹 Submit */}
             <button
               disabled={submitting}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white w-full rounded-xl py-3 font-bold active:scale-95 transition disabled:opacity-60 text-xs sm:text-sm shadow-md shadow-blue-500/25 mt-1 cursor-pointer flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl py-3 sm:py-3.5 font-bold active:scale-[0.98] transition disabled:opacity-60 text-xs sm:text-sm shadow-md shadow-blue-500/25 mt-1 cursor-pointer flex items-center justify-center gap-2"
               type="submit"
             >
               {submitting ? (
@@ -922,7 +1001,9 @@ export default function Payments() {
                   <span>Submitting Payment...</span>
                 </>
               ) : (
-                <span>Submit Payment ({selectedCalls.length} Calls)</span>
+                <span>
+                  Submit Payment {selectedCalls.length > 0 ? `(${selectedCalls.length} Calls • ₹${totalCombined})` : ""}
+                </span>
               )}
             </button>
           </form>
@@ -935,26 +1016,26 @@ export default function Payments() {
       <AnimatePresence>
         {callModalOpen && (
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-2.5 sm:p-4"
             onClick={() => setCallModalOpen(false)}
           >
             <motion.div
-              className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-4 max-h-[85vh] flex flex-col"
+              className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-3.5 sm:p-4 max-h-[88vh] flex flex-col overflow-hidden"
               initial={{ scale: 0.92, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 15 }}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal Top Header */}
-              <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 mb-2">
-                <div>
-                  <h2 className="font-extrabold text-base text-slate-900">Select Calls</h2>
-                  <div className="text-xs text-gray-500">
+              <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 mb-2 gap-2">
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-extrabold text-base text-slate-900 truncate">Select Calls</h2>
+                  <div className="text-xs text-gray-500 truncate">
                     {modalSelectedIds.size} selected of {calls.length} calls
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <div className="rounded-xl bg-slate-100 p-0.5 text-xs flex gap-1">
                     <button
                       type="button"
@@ -999,10 +1080,10 @@ export default function Payments() {
               {/* Multi-select shortcuts bar */}
               {modalTab === "pending" && (
                 <div className="flex items-center justify-between gap-2 pb-2 px-0.5 text-xs">
-                  <div className="text-slate-500 font-medium">
-                    Tap to check multiple calls:
+                  <div className="text-slate-500 font-medium truncate">
+                    Tap to check calls:
                   </div>
-                  <div className="flex items-center gap-2 font-bold">
+                  <div className="flex items-center gap-2 font-bold shrink-0">
                     <button
                       type="button"
                       onClick={selectAllPendingInModal}
@@ -1022,10 +1103,10 @@ export default function Payments() {
               )}
 
               {/* Search */}
-              <div className="relative mb-2">
+              <div className="relative mb-2 w-full">
                 <input
                   className="w-full border border-slate-200/90 rounded-xl px-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
-                  placeholder="Search by customer name, phone, address..."
+                  placeholder="Search customer, phone, address..."
                   value={callSearch}
                   onChange={(e) => {
                     setCallSearch(e.target.value || "");
@@ -1044,7 +1125,7 @@ export default function Payments() {
               </div>
 
               {/* List */}
-              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 py-1">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-0.5 py-1 min-h-0">
                 {callsLoading && (
                   <div className="space-y-2 py-1">
                     {[1, 2, 3, 4].map((i) => (
@@ -1083,7 +1164,7 @@ export default function Payments() {
                       <div
                         key={c._id}
                         onClick={() => !isPaid && toggleSelectCallInModal(c)}
-                        className={`w-full rounded-2xl p-3 sm:p-3.5 border transition-all select-none flex items-start justify-between gap-3 ${
+                        className={`w-full rounded-2xl p-2.5 sm:p-3.5 border transition-all select-none flex items-start justify-between gap-2.5 ${
                           isPaid
                             ? "opacity-60 bg-slate-50/70 border-slate-200 cursor-not-allowed"
                             : isChecked
@@ -1092,7 +1173,7 @@ export default function Payments() {
                         }`}
                       >
                         {/* Custom Checkbox Box & Customer Info */}
-                        <div className="flex items-start gap-3 min-w-0">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
                           {/* Prominent Custom Checkbox */}
                           <div className="pt-0.5 shrink-0">
                             {isPaid ? (
@@ -1109,20 +1190,20 @@ export default function Payments() {
                           </div>
 
                           {/* Customer Details with Sharp Font */}
-                          <div className="min-w-0 space-y-0.5">
+                          <div className="min-w-0 flex-1 space-y-0.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight truncate">
+                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight truncate max-w-full">
                                 {c.clientName || "Customer"}
                               </span>
                               {c.type && (
-                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded-md border border-blue-100 truncate max-w-[100px]">
+                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100 truncate max-w-[120px]">
                                   {c.type}
                                 </span>
                               )}
                             </div>
                             <div className="text-xs text-slate-600 font-semibold truncate flex items-center gap-1">
-                              <FaPhoneAlt size={9} className="text-slate-400" />
-                              <span>{c.phone || "No phone"}</span>
+                              <FaPhoneAlt size={9} className="text-slate-400 shrink-0" />
+                              <span className="truncate">{c.phone || "No phone"}</span>
                             </div>
                             <div className="text-[11px] text-slate-500 line-clamp-1 flex items-center gap-1">
                               <FiMapPin size={10} className="text-slate-400 shrink-0" />
@@ -1132,7 +1213,7 @@ export default function Payments() {
                         </div>
 
                         {/* Right Price & Status Badge */}
-                        <div className="text-right shrink-0 space-y-1.5">
+                        <div className="text-right shrink-0 space-y-1">
                           <div className="text-xs sm:text-sm font-black text-slate-900">
                             ₹{c.price || 0}
                           </div>
@@ -1163,7 +1244,7 @@ export default function Payments() {
                 <button
                   type="button"
                   onClick={() => setCallModalOpen(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer"
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer text-center"
                 >
                   Cancel
                 </button>
@@ -1171,7 +1252,7 @@ export default function Payments() {
                 <button
                   type="button"
                   onClick={confirmModalSelection}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-500/20 transition active:scale-95 cursor-pointer"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-500/20 transition active:scale-95 cursor-pointer text-center truncate"
                 >
                   Confirm Selected ({modalSelectedIds.size})
                 </button>

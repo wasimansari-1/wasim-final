@@ -24,6 +24,7 @@ async function handler(req, res, user) {
     name: String(name || cleanUsername).trim(),
     phone: String(phone || "").trim(),
     passwordHash,
+    plainPassword: String(password).trim(),
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -31,7 +32,13 @@ async function handler(req, res, user) {
   const r = await db.collection("technicians").insertOne(insertDoc);
   delPattern("admin:techs:*").catch(() => {});
 
-  return res.json({ ok: true, id: r.insertedId.toString(), message: "Technician created successfully" });
+  return res.json({
+    ok: true,
+    id: r.insertedId.toString(),
+    message: "Technician created successfully",
+    username: cleanUsername,
+    plainPassword: String(password).trim(),
+  });
 }
 
 export default requireRole("admin")(handler);

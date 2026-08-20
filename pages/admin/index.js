@@ -72,6 +72,9 @@ export default function AdminHome() {
   useEffect(() => {
     if (!user || !db) return;
 
+    let isInitial = true;
+    let unsub = () => {};
+
     try {
       const q = query(
         collection(db, "notifications"),
@@ -80,25 +83,33 @@ export default function AdminHome() {
         limit(20)
       );
 
-      const unsub = onSnapshot(q, (snap) => {
-        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        if (data.length > notifications.length && notifications.length > 0) {
-          const newest = data[0];
-          toast.success(`🔔 ${newest.message || newest.title}`);
-          try {
-            new Audio("/forward.mp3").play().catch(() => {});
-          } catch {}
+          if (!isInitial && snap.docChanges().some((c) => c.type === "added")) {
+            const newest = data[0];
+            if (newest) {
+              toast.success(`🔔 ${newest.message || newest.title}`);
+              try {
+                new Audio("/forward.mp3").play().catch(() => {});
+              } catch {}
+            }
+          }
+          isInitial = false;
+          setNotifications(data);
+        },
+        (err) => {
+          console.warn("Admin notifications listener error:", err);
         }
-
-        setNotifications(data);
-      });
-
-      return () => unsub();
+      );
     } catch (e) {
       console.warn("Firestore listener warning:", e);
     }
-  }, [user, notifications.length]);
+
+    return () => unsub();
+  }, [user?.username]);
 
   const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 

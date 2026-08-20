@@ -161,19 +161,42 @@ export default function TechCalls() {
   }, []);
 
   const tabCacheRef = useRef({});
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef({});
+  const abortControllerRef = useRef(null);
 
-  // Fetch Calls with 10-per-page Backend Pagination
+  // Fetch Calls with 10-per-page Backend Pagination & Deduplication
   const fetchCalls = useCallback(
-    async (showNotify = false) => {
+    async (showNotify = false, force = false) => {
+      const cacheKey = `${tab}_${page}`;
+      const now = Date.now();
+
+      // Deduplication & rapid-call prevention
+      if (isFetchingRef.current && !force) return;
+      if (!force && lastFetchTimeRef.current[cacheKey] && now - lastFetchTimeRef.current[cacheKey] < 800) {
+        return;
+      }
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      isFetchingRef.current = true;
+      lastFetchTimeRef.current[cacheKey] = now;
+      setRefreshing(true);
+
       try {
-        setRefreshing(true);
         const params = new URLSearchParams({
           tab,
           page: String(page),
           pageSize: String(PAGE_SIZE),
         });
 
-        const res = await fetch(`/api/tech/my-calls?${params.toString()}`);
+        const res = await fetch(`/api/tech/my-calls?${params.toString()}`, {
+          signal: controller.signal,
+        });
         const data = await res.json().catch(() => ({}));
 
         if (res.ok && data.success) {
@@ -187,7 +210,7 @@ export default function TechCalls() {
           }
 
           // Cache current tab & page results in memory
-          tabCacheRef.current[`${tab}_${page}`] = {
+          tabCacheRef.current[cacheKey] = {
             items,
             totalPages: data.totalPages || 1,
             totalCount: data.totalCount || items.length,
@@ -199,8 +222,11 @@ export default function TechCalls() {
           }
         }
       } catch (err) {
-        console.error("fetch calls err:", err);
+        if (err.name !== "AbortError") {
+          console.error("fetch calls err:", err);
+        }
       } finally {
+        isFetchingRef.current = false;
         setLoading(false);
         setRefreshing(false);
       }
@@ -208,6 +234,12 @@ export default function TechCalls() {
     [tab, page]
   );
 
+  const fetchCallsRef = useRef(fetchCalls);
+  useEffect(() => {
+    fetchCallsRef.current = fetchCalls;
+  }, [fetchCalls]);
+
+  // Tab and Page Navigation (with 0ms instant cached load)
   useEffect(() => {
     const cacheKey = `${tab}_${page}`;
     if (tabCacheRef.current[cacheKey]) {
@@ -220,60 +252,75 @@ export default function TechCalls() {
     } else {
       setLoading(true);
     }
-    fetchCalls();
+    fetchCalls(false);
   }, [tab, page, fetchCalls]);
 
-  // Realtime Firestore Socket Listener & Background Live Polling
+  // Realtime Firestore Socket Listener (Zero polling, Zero server overload, Instant live updates)
   useEffect(() => {
+    if (!user) return;
+    const identifier = user.id || user._id || user.username;
+    if (!identifier || !db) return;
+
+    let isInitialSnapshot = true;
     let unsub = () => {};
-    if (user) {
-      const identifier = user.id || user._id || user.username;
-      if (identifier) {
-        let isInitialSnapshot = true;
-        try {
-          const q1 = fsQuery(
-            collection(db, "forwarded_calls"),
-            where("techId", "==", String(identifier)),
-            limit(PAGE_SIZE)
-          );
 
-          unsub = onSnapshot(
-            q1,
-            (snapshot) => {
-              if (isInitialSnapshot) {
-                isInitialSnapshot = false;
-                return;
-              }
+    try {
+      const q1 = fsQuery(
+        collection(db, "forwarded_calls"),
+        where("techId", "==", String(identifier)),
+        limit(PAGE_SIZE)
+      );
 
-              if (!snapshot.empty) {
-                const hasNew = snapshot.docChanges().some((c) => c.type === "added");
-                if (hasNew) {
-                  playSound();
-                  vibrate([80, 40, 80]);
-                }
-                fetchCalls(false);
-              }
-            },
-            () => {
-              fetchCalls(false);
+      unsub = onSnapshot(
+        q1,
+        (snapshot) => {
+          if (isInitialSnapshot) {
+            isInitialSnapshot = false;
+            return;
+          }
+
+          if (!snapshot.empty) {
+            const hasAdded = snapshot.docChanges().some((c) => c.type === "added");
+            if (hasAdded) {
+              playSound();
+              vibrate([80, 40, 80]);
             }
-          );
-        } catch {
-          fetchCalls(false);
+            // Clear in-memory tab cache so fresh data is fetched on socket event
+            tabCacheRef.current = {};
+            fetchCallsRef.current?.(false, true);
+          }
+        },
+        (error) => {
+          console.warn("Firestore socket listener warning:", error?.message || error);
         }
-      }
+      );
+    } catch (err) {
+      console.warn("Firestore subscription error:", err);
     }
-
-    // Auto-polling interval every 7s for 100% reliable live updates
-    const pollInterval = setInterval(() => {
-      fetchCalls(false);
-    }, 7000);
 
     return () => {
       unsub();
-      clearInterval(pollInterval);
     };
-  }, [user, fetchCalls]);
+  }, [user?.id, user?._id, user?.username]);
+
+  // Occasional Focus & Online Reconnect Check (60s cooldown, no constant polling)
+  useEffect(() => {
+    let lastFocusFetch = Date.now();
+    const onFocus = () => {
+      if (Date.now() - lastFocusFetch > 60000) {
+        lastFocusFetch = Date.now();
+        fetchCallsRef.current?.(false, true);
+      }
+    };
+    const onOnline = () => fetchCallsRef.current?.(false, true);
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
 
   // Memoized Handlers for 0ms Zero-Lag Tab Switching
   const handleShowDetails = useCallback((call) => {
