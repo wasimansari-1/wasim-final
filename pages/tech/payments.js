@@ -8,13 +8,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   FiTrash2,
-  FiSearch,
   FiX,
   FiCheck,
   FiCreditCard,
   FiUser,
   FiMapPin,
-  FiDollarSign,
 } from "react-icons/fi";
 import { FaMoneyBillWave, FaPhoneAlt } from "react-icons/fa";
 
@@ -67,7 +65,7 @@ export default function TechnicianPayments() {
   // Signature Pad State & Dynamic Container Measurement
   const sigRef = useRef(null);
   const sigContainerRef = useRef(null);
-  const [canvasWidth, setCanvasWidth] = useState(300);
+  const [canvasWidth, setCanvasWidth] = useState(280);
 
   // Modal State
   const [callModalOpen, setCallModalOpen] = useState(false);
@@ -76,7 +74,6 @@ export default function TechnicianPayments() {
 
   // Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
-  const [deviceToken, setDeviceToken] = useState("");
 
   // ResizeObserver for dynamic canvas sizing
   useEffect(() => {
@@ -90,8 +87,8 @@ export default function TechnicianPayments() {
           return;
         }
       }
-      const fallback = typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 480) : 300;
-      setCanvasWidth(fallback > 0 ? fallback : 300);
+      const fallback = typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 480) : 280;
+      setCanvasWidth(fallback > 0 ? fallback : 280);
     };
 
     updateSize();
@@ -406,47 +403,47 @@ export default function TechnicianPayments() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 safe-bottom overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-slate-50 safe-bottom overflow-x-hidden w-full max-w-full box-border">
       <Header user={user} />
 
-      <main className="w-full max-w-2xl mx-auto px-2.5 sm:px-6 py-2.5 sm:py-6 space-y-3.5">
-        <div className="w-full max-w-full bg-white rounded-3xl p-3 sm:p-6 shadow-sm border border-slate-200/80 space-y-4 overflow-hidden">
+      <main className="w-full max-w-2xl mx-auto px-2 xs:px-3 sm:px-6 py-2 xs:py-3 sm:py-6 space-y-3 box-border overflow-hidden">
+        <div className="w-full max-w-full bg-white rounded-2xl xs:rounded-3xl p-2.5 xs:p-3.5 sm:p-6 shadow-sm border border-slate-200/80 space-y-3.5 box-border overflow-hidden">
           
           {/* Header */}
-          <div className="flex items-center gap-2.5 sm:gap-3 pb-3 border-b border-slate-100 w-full">
-            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-blue-600 text-white grid place-items-center text-lg sm:text-xl shadow-md shadow-blue-500/20 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 pb-2.5 border-b border-slate-100 w-full min-w-0">
+            <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-2xl bg-blue-600 text-white grid place-items-center text-base sm:text-xl shadow-md shadow-blue-500/20 shrink-0">
               💳
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-sm sm:text-lg font-black text-slate-900 leading-tight truncate">
+              <h1 className="text-xs xs:text-sm sm:text-lg font-black text-slate-900 leading-tight truncate">
                 Payment Collection
               </h1>
-              <p className="text-[11px] sm:text-xs text-slate-500 leading-snug mt-0.5">
+              <p className="text-[10.5px] xs:text-[11px] sm:text-xs text-slate-500 leading-snug mt-0.5 truncate">
                 Record cash / online payments & receiver signature.
               </p>
             </div>
           </div>
 
-          <form onSubmit={submit} className="grid gap-3.5 w-full">
+          <form onSubmit={submit} className="grid gap-3 w-full min-w-0">
             {/* Select Call Section */}
-            <div className="space-y-1.5 w-full">
+            <div className="space-y-1.5 w-full min-w-0">
               <label className="text-xs sm:text-sm font-bold text-slate-700 block">
                 Select Customer Call(s)
               </label>
               <button
                 type="button"
                 onClick={openCallModal}
-                className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 bg-slate-50 hover:bg-slate-100 flex items-center justify-between gap-2 text-xs sm:text-sm transition active:scale-[0.99] cursor-pointer shadow-2xs overflow-hidden"
+                className="w-full border border-slate-200 rounded-2xl px-2.5 xs:px-3 py-2 sm:py-2.5 bg-slate-50 hover:bg-slate-100 flex items-center justify-between gap-1.5 text-xs sm:text-sm transition active:scale-[0.99] cursor-pointer shadow-2xs overflow-hidden min-w-0"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="text-base shrink-0">📋</span>
-                  <span className="font-bold text-slate-800 truncate">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <span className="text-sm shrink-0">📋</span>
+                  <span className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm truncate">
                     {selectedCalls.length
                       ? `✓ ${selectedCalls.length} call${selectedCalls.length > 1 ? "s" : ""} selected`
                       : "Tap to select customer calls"}
                   </span>
                 </div>
-                <span className="text-blue-600 font-bold text-[11px] sm:text-xs bg-blue-50 px-2.5 py-1 rounded-xl border border-blue-200 shrink-0 flex items-center gap-1">
+                <span className="text-blue-600 font-bold text-[10.5px] xs:text-[11px] sm:text-xs bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-xl border border-blue-200 shrink-0 flex items-center gap-0.5">
                   <span>View Calls</span>
                   <span className="text-[9px]">▾</span>
                 </span>
@@ -455,7 +452,7 @@ export default function TechnicianPayments() {
 
             {/* Selected Calls List with Quick Split Buttons */}
             {selectedCalls.length > 0 && (
-              <div className="space-y-3 w-full">
+              <div className="space-y-2.5 w-full min-w-0">
                 {selectedCalls.map((c) => {
                   const closed = isClosedStatus(c.status);
                   const badgeText =
@@ -486,71 +483,74 @@ export default function TechnicianPayments() {
                   return (
                     <div
                       key={c._id}
-                      className="w-full border border-slate-200/90 rounded-2xl p-2.5 sm:p-4 bg-slate-50/70 hover:bg-slate-50 flex flex-col gap-2.5 shadow-2xs transition overflow-hidden"
+                      className="w-full max-w-full border border-slate-200/90 rounded-2xl p-2 xs:p-2.5 sm:p-3.5 bg-slate-50/80 hover:bg-slate-50 flex flex-col gap-2 shadow-2xs transition box-border overflow-hidden min-w-0"
                     >
-                      {/* Customer Info Header */}
-                      <div className="flex items-start justify-between gap-2 w-full">
-                        <div className="flex items-start gap-2 min-w-0 flex-1">
-                          <div className="h-8 w-8 rounded-xl bg-slate-900 text-white font-black grid place-items-center text-xs shrink-0 shadow-xs">
+                      {/* Customer Info Header Row */}
+                      <div className="flex items-center justify-between gap-1.5 w-full min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                          <div className="h-7 w-7 rounded-xl bg-slate-900 text-white font-black grid place-items-center text-[10px] shrink-0 shadow-xs">
                             {getInitials(c.clientName)}
                           </div>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-snug truncate max-w-full">
-                                {c.clientName || "Customer"}
-                              </span>
-                              <span
-                                className={`text-[9px] sm:text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full border whitespace-nowrap shrink-0 ${badgeClass}`}
-                              >
-                                {badgeText}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-600 font-semibold truncate flex items-center gap-1">
-                              <FaPhoneAlt size={9} className="text-slate-400 shrink-0" />
-                              <span className="truncate">{c.phone || "No phone"}</span>
-                            </div>
-                            <div className="text-[10px] sm:text-[10.5px] text-slate-500 line-clamp-1 flex items-center gap-1">
-                              <FiMapPin size={9} className="text-slate-400 shrink-0" />
-                              <span className="truncate">{c.address || "Address not provided"}</span>
-                            </div>
+                          <div className="min-w-0 flex-1 flex items-center gap-1 overflow-hidden">
+                            <span className="font-black text-xs xs:text-sm text-slate-900 leading-tight truncate">
+                              {c.clientName || "Customer"}
+                            </span>
+                            <span
+                              className={`text-[8.5px] xs:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border whitespace-nowrap shrink-0 ${badgeClass}`}
+                            >
+                              {badgeText}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Price & Remove Button */}
-                        <div className="flex items-center gap-1.5 shrink-0 pl-1">
-                          <div className="text-right">
-                            <div className="text-[9px] text-slate-400 font-bold uppercase">Bill</div>
-                            <div className="text-xs sm:text-sm font-black text-slate-900">
+                        {/* Bill Amount & Remove Button */}
+                        <div className="flex items-center gap-1.5 shrink-0 pl-0.5">
+                          <div className="text-right leading-none">
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase block">Bill</span>
+                            <span className="text-xs xs:text-sm font-black text-slate-900">
                               ₹{c.price || 0}
-                            </div>
+                            </span>
                           </div>
                           <button
                             type="button"
-                            className="h-7 w-7 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 text-slate-400 hover:text-rose-600 grid place-items-center transition cursor-pointer shadow-2xs"
+                            className="h-6 w-6 xs:h-7 xs:w-7 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 text-slate-400 hover:text-rose-600 grid place-items-center transition cursor-pointer shadow-2xs shrink-0"
                             onClick={() => removeSelectedCall(c._id)}
                             title="Remove call"
                           >
-                            <FiTrash2 size={11} />
+                            <FiTrash2 size={10} />
                           </button>
                         </div>
                       </div>
 
+                      {/* Phone & Address Row */}
+                      <div className="space-y-0.5 w-full min-w-0 overflow-hidden">
+                        <div className="text-[10.5px] xs:text-[11px] text-slate-600 font-semibold truncate flex items-center gap-1">
+                          <FaPhoneAlt size={8.5} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{c.phone || "No phone"}</span>
+                          {c.type && <span className="text-slate-400">• {c.type}</span>}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate flex items-center gap-1 w-full min-w-0">
+                          <FiMapPin size={9} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{c.address || "Address not provided"}</span>
+                        </div>
+                      </div>
+
                       {/* Quick Split Buttons - 3 Equal Responsive Columns */}
-                      <div className="grid grid-cols-3 gap-1 sm:gap-1.5 w-full">
+                      <div className="grid grid-cols-3 gap-1 w-full min-w-0">
                         <button
                           type="button"
                           onClick={() => {
                             updateSelectedAmount(c._id, "onlineAmount", c.price);
                             updateSelectedAmount(c._id, "cashAmount", "");
                           }}
-                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl border text-[10px] sm:text-xs font-black transition active:scale-95 cursor-pointer shadow-2xs ${
+                          className={`min-w-0 flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-xl border text-[9.5px] xs:text-[10.5px] font-black transition active:scale-95 cursor-pointer shadow-2xs leading-none overflow-hidden ${
                             isFullOnline
                               ? "bg-blue-600 text-white border-blue-600 shadow-xs"
                               : "bg-white hover:bg-blue-50 text-blue-700 border-blue-200/80"
                           }`}
                         >
-                          <FiCreditCard size={10} className="shrink-0" />
-                          <span className="truncate">Full Online</span>
+                          <FiCreditCard size={9} className="shrink-0" />
+                          <span className="truncate">Online</span>
                         </button>
 
                         <button
@@ -559,14 +559,14 @@ export default function TechnicianPayments() {
                             updateSelectedAmount(c._id, "onlineAmount", "");
                             updateSelectedAmount(c._id, "cashAmount", c.price);
                           }}
-                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl border text-[10px] sm:text-xs font-black transition active:scale-95 cursor-pointer shadow-2xs ${
+                          className={`min-w-0 flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-xl border text-[9.5px] xs:text-[10.5px] font-black transition active:scale-95 cursor-pointer shadow-2xs leading-none overflow-hidden ${
                             isFullCash
                               ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
                               : "bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200/80"
                           }`}
                         >
-                          <FaMoneyBillWave size={10} className="shrink-0" />
-                          <span className="truncate">Full Cash</span>
+                          <FaMoneyBillWave size={9} className="shrink-0" />
+                          <span className="truncate">Cash</span>
                         </button>
 
                         <button
@@ -578,22 +578,22 @@ export default function TechnicianPayments() {
                             updateSelectedAmount(c._id, "onlineAmount", String(online));
                             updateSelectedAmount(c._id, "cashAmount", String(cash));
                           }}
-                          className={`min-w-0 flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl border text-[10px] sm:text-xs font-black transition active:scale-95 cursor-pointer shadow-2xs ${
+                          className={`min-w-0 flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-xl border text-[9.5px] xs:text-[10.5px] font-black transition active:scale-95 cursor-pointer shadow-2xs leading-none overflow-hidden ${
                             isSplit5050
                               ? "bg-purple-600 text-white border-purple-600 shadow-xs"
                               : "bg-white hover:bg-purple-50 text-purple-700 border-purple-200/80"
                           }`}
                         >
-                          <span>⚖️</span>
-                          <span className="truncate">50/50 Split</span>
+                          <span className="text-[10px]">⚖️</span>
+                          <span className="truncate">50/50</span>
                         </button>
                       </div>
 
                       {/* Online vs Cash Amount Inputs */}
-                      <div className="grid grid-cols-2 gap-2 w-full">
-                        <div className="space-y-1 min-w-0">
-                          <label className="text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 truncate">
-                            <FiCreditCard size={11} className="text-blue-600 shrink-0" />
+                      <div className="grid grid-cols-2 gap-1.5 w-full min-w-0">
+                        <div className="space-y-0.5 min-w-0">
+                          <label className="text-[10px] xs:text-[11px] font-bold text-slate-700 flex items-center gap-1 truncate">
+                            <FiCreditCard size={10} className="text-blue-600 shrink-0" />
                             <span>Online (₹)</span>
                           </label>
                           <input
@@ -604,13 +604,13 @@ export default function TechnicianPayments() {
                             onChange={(e) =>
                               updateSelectedAmount(c._id, "onlineAmount", e.target.value)
                             }
-                            className="w-full border border-slate-200 rounded-xl px-2.5 py-1.5 sm:py-2 bg-white text-slate-900 font-extrabold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs"
+                            className="w-full min-w-0 border border-slate-200 rounded-xl px-2 py-1.5 bg-white text-slate-900 font-extrabold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs box-border"
                           />
                         </div>
 
-                        <div className="space-y-1 min-w-0">
-                          <label className="text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 truncate">
-                            <FaMoneyBillWave size={11} className="text-emerald-600 shrink-0" />
+                        <div className="space-y-0.5 min-w-0">
+                          <label className="text-[10px] xs:text-[11px] font-bold text-slate-700 flex items-center gap-1 truncate">
+                            <FaMoneyBillWave size={10} className="text-emerald-600 shrink-0" />
                             <span>Cash (₹)</span>
                           </label>
                           <input
@@ -621,26 +621,26 @@ export default function TechnicianPayments() {
                             onChange={(e) =>
                               updateSelectedAmount(c._id, "cashAmount", e.target.value)
                             }
-                            className="w-full border border-slate-200 rounded-xl px-2.5 py-1.5 sm:py-2 bg-white text-slate-900 font-extrabold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs sm:text-sm shadow-2xs"
+                            className="w-full min-w-0 border border-slate-200 rounded-xl px-2 py-1.5 bg-white text-slate-900 font-extrabold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs sm:text-sm shadow-2xs box-border"
                           />
                         </div>
                       </div>
 
                       {/* Entered vs Bill Match Indicator */}
-                      <div className="flex items-center justify-between text-[10.5px] sm:text-xs pt-1 border-t border-slate-200/50">
-                        <span className="text-slate-500">
+                      <div className="flex items-center justify-between text-[10px] xs:text-[11px] pt-1 border-t border-slate-200/50 w-full min-w-0">
+                        <span className="text-slate-500 truncate">
                           Entered: <b className="text-slate-800">₹{callSum}</b> of ₹{callPrice}
                         </span>
                         {callPrice > 0 && callSum === callPrice ? (
-                          <span className="text-emerald-700 font-extrabold flex items-center gap-0.5">
-                            <FiCheck size={11} /> Matched
+                          <span className="text-emerald-700 font-extrabold flex items-center gap-0.5 shrink-0">
+                            <FiCheck size={10} /> Matched
                           </span>
                         ) : callSum > callPrice ? (
-                          <span className="text-rose-600 font-extrabold">
+                          <span className="text-rose-600 font-extrabold shrink-0">
                             +₹{callSum - callPrice} Excess
                           </span>
                         ) : (
-                          <span className="text-amber-700 font-bold">
+                          <span className="text-amber-700 font-bold shrink-0">
                             ₹{callPrice - callSum} remaining
                           </span>
                         )}
@@ -653,28 +653,28 @@ export default function TechnicianPayments() {
 
             {/* Totals Summary */}
             {selectedCalls.length > 0 && (
-              <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50 rounded-2xl p-3 border border-blue-200/70 w-full space-y-1.5">
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="bg-white/80 rounded-xl p-2 border border-slate-200/60">
-                    <div className="text-[10px] font-extrabold uppercase text-slate-500">Online</div>
-                    <div className="text-sm sm:text-base font-black text-blue-600">₹{totalOnline}</div>
+              <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50 rounded-2xl p-2.5 border border-blue-200/70 w-full min-w-0 space-y-1 box-border">
+                <div className="grid grid-cols-2 gap-1.5 text-center w-full min-w-0">
+                  <div className="bg-white/90 rounded-xl p-1.5 border border-slate-200/60 min-w-0">
+                    <div className="text-[9.5px] font-extrabold uppercase text-slate-500">Online</div>
+                    <div className="text-xs xs:text-sm sm:text-base font-black text-blue-600 truncate">₹{totalOnline}</div>
                   </div>
-                  <div className="bg-white/80 rounded-xl p-2 border border-slate-200/60">
-                    <div className="text-[10px] font-extrabold uppercase text-slate-500">Cash</div>
-                    <div className="text-sm sm:text-base font-black text-emerald-600">₹{totalCash}</div>
+                  <div className="bg-white/90 rounded-xl p-1.5 border border-slate-200/60 min-w-0">
+                    <div className="text-[9.5px] font-extrabold uppercase text-slate-500">Cash</div>
+                    <div className="text-xs xs:text-sm sm:text-base font-black text-emerald-600 truncate">₹{totalCash}</div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-xs font-bold pt-1 text-slate-800">
-                  <span>Total Collected Amount:</span>
-                  <span className="text-sm font-black text-indigo-700">₹{totalCombined}</span>
+                <div className="flex items-center justify-between text-[11px] xs:text-xs font-bold pt-1 text-slate-800 w-full min-w-0">
+                  <span className="truncate">Total Collected:</span>
+                  <span className="text-xs xs:text-sm font-black text-indigo-700 shrink-0">₹{totalCombined}</span>
                 </div>
               </div>
             )}
 
             {/* Receiver Name */}
-            <div className="space-y-1 w-full pt-1 border-t border-slate-100">
-              <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1">
-                <FiUser size={11} className="text-blue-600" />
+            <div className="space-y-1 w-full min-w-0 pt-1 border-t border-slate-100">
+              <label className="text-[10.5px] xs:text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 truncate">
+                <FiUser size={10} className="text-blue-600 shrink-0" />
                 <span>Paying Customer / Receiver Name *</span>
               </label>
               <input
@@ -683,20 +683,20 @@ export default function TechnicianPayments() {
                 placeholder="Name of customer who paid"
                 value={form.receiver}
                 onChange={(e) => setForm({ ...form, receiver: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs"
+                className="w-full min-w-0 border border-slate-200 rounded-xl px-2.5 py-1.5 sm:py-2 bg-slate-50 focus:bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm shadow-2xs box-border"
               />
             </div>
 
             {/* Signature Pad */}
-            <div className="space-y-1.5 w-full pt-1 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] sm:text-xs font-bold text-slate-700">
+            <div className="space-y-1 w-full min-w-0 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between w-full min-w-0">
+                <label className="text-[10.5px] xs:text-[11px] sm:text-xs font-bold text-slate-700 truncate">
                   Receiver Signature (Sign inside box)
                 </label>
                 <button
                   type="button"
                   onClick={clearSig}
-                  className="text-[11px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer"
+                  className="text-[10.5px] xs:text-[11px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer shrink-0"
                 >
                   Clear
                 </button>
@@ -704,19 +704,19 @@ export default function TechnicianPayments() {
 
               <div
                 ref={sigContainerRef}
-                className="w-full max-w-full border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white"
+                className="w-full max-w-full border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white box-border"
                 style={{ touchAction: "none" }}
               >
                 <SignaturePad
                   ref={sigRef}
                   canvasProps={{
                     width: canvasWidth,
-                    height: 140,
+                    height: 130,
                     className: "sigCanvas w-full max-w-full bg-white block",
                     style: {
                       width: "100%",
                       maxWidth: "100%",
-                      height: "140px",
+                      height: "130px",
                       touchAction: "none",
                       display: "block",
                       boxSizing: "border-box",
@@ -730,11 +730,11 @@ export default function TechnicianPayments() {
             <button
               type="submit"
               disabled={submitting || selectedCalls.length === 0}
-              className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-extrabold py-3 rounded-2xl text-xs sm:text-sm shadow-md shadow-blue-500/25 active:scale-[0.98] transition duration-150 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2 mt-1"
+              className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-extrabold py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm shadow-md shadow-blue-500/25 active:scale-[0.98] transition duration-150 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-1.5 mt-1 box-border min-w-0"
             >
               {submitting ? (
                 <>
-                  <span className="inline-block border-2 w-4 h-4 rounded-full border-white border-t-transparent animate-spin" />
+                  <span className="inline-block border-2 w-3.5 h-3.5 rounded-full border-white border-t-transparent animate-spin" />
                   <span>Recording Payment...</span>
                 </>
               ) : (
@@ -753,32 +753,32 @@ export default function TechnicianPayments() {
       <AnimatePresence>
         {callModalOpen && (
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-2.5 sm:p-4"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-2 xs:p-3 sm:p-4"
             onClick={() => setCallModalOpen(false)}
           >
             <motion.div
-              className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-3.5 sm:p-4 max-h-[88vh] flex flex-col overflow-hidden"
+              className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-3 xs:p-3.5 sm:p-4 max-h-[88vh] flex flex-col overflow-hidden box-border"
               initial={{ scale: 0.92, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 15 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 mb-2 gap-2">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100 mb-2 gap-2">
                 <div className="min-w-0 flex-1">
-                  <h2 className="font-extrabold text-base text-slate-900 truncate">
+                  <h2 className="font-extrabold text-sm xs:text-base text-slate-900 truncate">
                     Select Calls for Payment
                   </h2>
-                  <p className="text-xs text-slate-500 truncate">
+                  <p className="text-[11px] text-slate-500 truncate">
                     Tap calls to add / remove from collection
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="rounded-xl bg-slate-100 p-0.5 text-xs flex gap-1">
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="rounded-xl bg-slate-100 p-0.5 text-xs flex gap-0.5">
                     <button
                       type="button"
                       onClick={() => setModalTab("all")}
-                      className={`px-2 py-0.5 rounded-lg font-bold transition cursor-pointer text-[11px] ${
+                      className={`px-1.5 py-0.5 rounded-lg font-bold transition cursor-pointer text-[10px] xs:text-[11px] ${
                         modalTab === "all"
                           ? "bg-white text-blue-600 shadow-2xs"
                           : "text-slate-600"
@@ -789,7 +789,7 @@ export default function TechnicianPayments() {
                     <button
                       type="button"
                       onClick={() => setModalTab("pending")}
-                      className={`px-2 py-0.5 rounded-lg font-bold transition cursor-pointer text-[11px] ${
+                      className={`px-1.5 py-0.5 rounded-lg font-bold transition cursor-pointer text-[10px] xs:text-[11px] ${
                         modalTab === "pending"
                           ? "bg-white text-amber-600 shadow-2xs"
                           : "text-slate-600"
@@ -802,17 +802,17 @@ export default function TechnicianPayments() {
                   <button
                     type="button"
                     onClick={() => setCallModalOpen(false)}
-                    className="text-gray-400 hover:text-black text-xl p-1 cursor-pointer"
+                    className="text-gray-400 hover:text-black text-lg p-1 cursor-pointer"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <div className="relative mb-2 w-full">
+              <div className="relative mb-2 w-full min-w-0">
                 <input
-                  className="w-full border border-slate-200/90 rounded-xl px-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
-                  placeholder="Search customer name, phone, address..."
+                  className="w-full border border-slate-200/90 rounded-xl px-2.5 py-1.5 text-xs bg-slate-50 focus:bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs box-border"
+                  placeholder="Search customer, phone, address..."
                   value={callSearch}
                   onChange={(e) => setCallSearch(e.target.value || "")}
                 />
@@ -820,17 +820,17 @@ export default function TechnicianPayments() {
                   <button
                     type="button"
                     onClick={() => setCallSearch("")}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
                   >
-                    <FiX size={13} />
+                    <FiX size={12} />
                   </button>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-2 pr-0.5 py-1 min-h-0">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 py-1 min-h-0">
                 {modalFilteredCalls.length === 0 && (
-                  <div className="text-center text-slate-400 py-8 text-xs font-semibold space-y-1">
-                    <div className="text-2xl">📋</div>
+                  <div className="text-center text-slate-400 py-6 text-xs font-semibold space-y-1">
+                    <div className="text-xl">📋</div>
                     <div>No calls found.</div>
                   </div>
                 )}
@@ -843,15 +843,15 @@ export default function TechnicianPayments() {
                     <div
                       key={c._id}
                       onClick={() => toggleSelectCall(c)}
-                      className={`w-full rounded-2xl p-2.5 sm:p-3.5 border transition-all select-none flex items-start justify-between gap-2.5 cursor-pointer shadow-2xs ${
+                      className={`w-full rounded-2xl p-2 xs:p-2.5 border transition-all select-none flex items-start justify-between gap-2 cursor-pointer shadow-2xs box-border overflow-hidden ${
                         isSelected
                           ? "bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20"
                           : "bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80"
                       }`}
                     >
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="flex items-start gap-2 min-w-0 flex-1">
                         <div
-                          className={`h-8 w-8 rounded-xl font-extrabold grid place-items-center text-xs shrink-0 shadow-2xs ${
+                          className={`h-7 w-7 rounded-xl font-extrabold grid place-items-center text-[10px] shrink-0 shadow-2xs ${
                             isSelected
                               ? "bg-blue-600 text-white"
                               : "bg-slate-900 text-white"
@@ -860,33 +860,33 @@ export default function TechnicianPayments() {
                           {isSelected ? "✓" : getInitials(c.clientName)}
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight truncate max-w-full">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="font-extrabold text-xs text-slate-900 leading-tight truncate max-w-full">
                               {c.clientName || "Customer"}
                             </span>
                             {isPaid && (
-                              <span className="text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              <span className="text-[8.5px] font-extrabold px-1.5 py-0.2 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
                                 Paid
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-600 font-semibold truncate flex items-center gap-1">
-                            <FaPhoneAlt size={9} className="text-slate-400 shrink-0" />
+                          <div className="text-[11px] text-slate-600 font-semibold truncate flex items-center gap-1">
+                            <FaPhoneAlt size={8.5} className="text-slate-400 shrink-0" />
                             <span className="truncate">{c.phone || "No phone"}</span>
                           </div>
-                          <div className="text-[11px] text-slate-500 line-clamp-1 flex items-center gap-1">
-                            <FiMapPin size={10} className="text-slate-400 shrink-0" />
+                          <div className="text-[10px] text-slate-500 line-clamp-1 flex items-center gap-1">
+                            <FiMapPin size={9} className="text-slate-400 shrink-0" />
                             <span className="truncate">{c.address || "No address"}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0 space-y-1">
-                        <div className="text-xs sm:text-sm font-black text-slate-900">
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <div className="text-xs xs:text-sm font-black text-slate-900">
                           ₹{c.price || 0}
                         </div>
                         <span
-                          className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full border whitespace-nowrap inline-block ${
+                          className={`text-[8.5px] font-extrabold px-1.5 py-0.2 rounded-full border whitespace-nowrap inline-block ${
                             isSelected
                               ? "bg-blue-600 text-white border-blue-600"
                               : "bg-slate-100 text-slate-700 border-slate-200"
@@ -900,11 +900,11 @@ export default function TechnicianPayments() {
                 })}
               </div>
 
-              <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex gap-2">
+              <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
                 <button
                   type="button"
                   onClick={() => setCallModalOpen(false)}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition cursor-pointer text-center"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2 rounded-xl text-xs font-bold shadow-md transition cursor-pointer text-center"
                 >
                   Done ({selectedCalls.length} selected)
                 </button>
