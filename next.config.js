@@ -1,11 +1,6 @@
-const BUILD_TIMESTAMP = Date.now().toString();
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  env: {
-    NEXT_PUBLIC_APP_BUILD_TIME: BUILD_TIMESTAMP,
-  },
 
   // ✅ Rewrites ensure both files served from root
   async rewrites() {
