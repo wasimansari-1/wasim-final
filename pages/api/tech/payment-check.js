@@ -1,7 +1,6 @@
 // pages/api/tech/payment-check.js
 import { ObjectId } from "mongodb";
 import { requireRole, getDb } from "../../../lib/api-helpers.js";
-import { getCache, setCache } from "../../../lib/redis.js";
 
 /**
  * Returns:
@@ -14,13 +13,6 @@ async function handler(req, res, user) {
   if (req.method !== "GET") return res.status(405).end();
 
   try {
-    const cacheKey = `tech:payment-check:${user.id}`;
-    const cachedData = await getCache(cacheKey);
-    if (cachedData) {
-      res.setHeader("X-Cache", "HIT");
-      return res.status(200).json(cachedData);
-    }
-
     const db = await getDb();
     const forwardedColl = db.collection("forwarded_calls");
     const paymentsColl = db.collection("payments");
@@ -64,15 +56,12 @@ async function handler(req, res, user) {
       }
     }
 
-    const result = {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res.status(200).json({
       success: true,
       paidCallIds: Array.from(paidCallIdsSet),
       paidKeys: Array.from(paidKeySet),
-    };
-
-    await setCache(cacheKey, result, 60);
-    res.setHeader("X-Cache", "MISS");
-    return res.status(200).json(result);
+    });
   } catch (err) {
     console.error("payment-check error:", err);
     return res.status(500).json({ success: false, error: "Server error" });

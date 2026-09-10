@@ -141,8 +141,12 @@ async function handler(req, res, user) {
         if (!CLOSED_STATUS_REGEX.test(status)) {
           problemNotClosed.push({ callId: sc.callId, status });
         }
-        // already paid
-        if (String(f.paymentStatus || "").toLowerCase() === "paid") {
+        // already paid check: check if payment record actually exists in payments collection
+        const existsInPayments = await paymentsColl.findOne(
+          { "calls.callId": String(f._id) },
+          { projection: { _id: 1 } }
+        );
+        if (existsInPayments) {
           problemAlreadyPaid.push(String(f._id));
         }
       }
@@ -244,9 +248,7 @@ async function handler(req, res, user) {
       if (ObjectId.isValid(sc.callId)) filter = { _id: new ObjectId(sc.callId) };
       else filter = { _id: sc.callId };
 
-      // additional safety: only update if not already Paid and status closed
       filter.$and = [
-        { $or: [{ paymentStatus: { $exists: false } }, { paymentStatus: { $ne: "Paid" } }] },
         { status: { $regex: "closed|completed|done|resolved|finished", $options: "i" } },
       ];
 

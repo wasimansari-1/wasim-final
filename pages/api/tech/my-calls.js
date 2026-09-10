@@ -31,13 +31,16 @@ async function handler(req, res, user) {
     const ALLOWED_TABS = new Set(["All Calls", "Today Calls", "Pending", "Closed", "Canceled"]);
     if (!ALLOWED_TABS.has(tab)) tab = "All Calls";
 
-    // ⚡ Redis Cache Check
+    // ⚡ Redis Cache Check (bypass when _t or no-cache is requested)
+    const skipCache = Boolean(req.query._t) || req.headers["cache-control"] === "no-cache";
     const cacheKey = `tech:calls:${user.id}:${tab}:${page}:${pageSize}`;
-    const cachedData = await getCache(cacheKey);
-    if (cachedData) {
-      res.setHeader("X-Cache", "HIT");
-      res.setHeader("Cache-Control", "private, no-cache");
-      return res.status(200).json(cachedData);
+    if (!skipCache) {
+      const cachedData = await getCache(cacheKey);
+      if (cachedData) {
+        res.setHeader("X-Cache", "HIT");
+        res.setHeader("Cache-Control", "private, no-cache");
+        return res.status(200).json(cachedData);
+      }
     }
 
     const db = await getDb();
@@ -171,8 +174,8 @@ async function handler(req, res, user) {
       const price = Number(i.price || 0);
       const key = `${normalizeForKey(clientName)}|${normalizePhone(phone)}|${normalizeForKey(address)}|${price}`;
 
-      const matchedPay = paidByCallId.get(String(i._id)) || paidKeyWithPrice.get(key) || null;
-      const isPaid = Boolean(matchedPay) || (i.paymentStatus && String(i.paymentStatus).toLowerCase().includes("paid"));
+      const matchedPay = paidByCallId.get(String(i._id)) || null;
+      const isPaid = Boolean(matchedPay);
 
       const chooseRaw = i.chooseCall ?? "";
       const chooseLabel =

@@ -43,10 +43,101 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
+function normalizeKey(clientName = "", phone = "", address = "") {
+  return (
+    String(clientName || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\d\s+,-]/g, "")
+      .trim() +
+    "|" +
+    String(phone || "").toLowerCase().replace(/\s+/g, "").replace(/\D/g, "") +
+    "|" +
+    String(address || "").toLowerCase().replace(/\s+/g, " ").trim()
+  );
+}
+
 function isClosedStatus(status) {
   if (!status) return false;
   const s = String(status).toLowerCase();
-  return s === "closed" || s === "completed" || s === "done";
+  return ["closed", "completed", "done", "resolved", "finished"].some((x) => s.includes(x));
+}
+
+// 🔹 User's Strict Rules:
+// 1) Pending Case: Jitna pending call hai jo abhi tak close nahi hua hai -> Pending Case
+// 2) Pending: Jo call close ho gaya aur jiska payment submit nahi hua hai -> Pending
+// 3) Paid: Jo call close ho gaya aur payment submit ho chuka hai -> Paid
+function getCallCategory(call) {
+  if (!call) return "pending_case";
+  const closed = isClosedStatus(call.status) || Boolean(call.closedAt);
+  const isPaid =
+    call.paymentStatus === "Paid" ||
+    String(call.paymentStatus || "").toLowerCase().includes("paid");
+
+  // Rule 1: Jo call close nahi hui hai, wo sabhi Pending Case me dikhegi
+  if (!closed) {
+    return "pending_case";
+  }
+  // Rule 3: Jo call close ho chuki hai aur payment submit ho gaya hai -> Paid
+  if (isPaid) {
+    return "paid";
+  }
+  // Rule 2: Jo call close ho chuki hai aur payment submit nahi hua -> Pending
+  return "pending";
+}
+
+// ⚡ Sequence Helper: Jo call latest ho wo sabse upar dikhegi
+function getCallSortTime(call, tab) {
+  if (!call) return 0;
+
+  // 1. Pending tab: recently closed calls must be on top!
+  if (tab === "pending") {
+    if (call.closedAt) {
+      const t = new Date(call.closedAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (call.updatedAt) {
+      const t = new Date(call.updatedAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+  }
+
+  // 2. Paid tab: recently paid/closed calls on top!
+  if (tab === "paid") {
+    if (call.paymentAt) {
+      const t = new Date(call.paymentAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (call.closedAt) {
+      const t = new Date(call.closedAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+  }
+
+  // 3. Fallbacks: closedAt -> updatedAt -> createdAt -> ObjectId timestamp
+  if (call.closedAt) {
+    const t = new Date(call.closedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (call.updatedAt) {
+    const t = new Date(call.updatedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (call.createdAt) {
+    const t = new Date(call.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (call.createdAtTime) return call.createdAtTime;
+
+  // Extract timestamp from MongoDB ObjectId (first 8 hex chars)
+  if (call._id && typeof call._id === "string" && call._id.length >= 8) {
+    try {
+      const ts = parseInt(call._id.substring(0, 8), 16) * 1000;
+      if (!isNaN(ts) && ts > 0) return ts;
+    } catch {}
+  }
+
+  return 0;
 }
 
 export default function TechnicianPayments() {
@@ -70,7 +161,7 @@ export default function TechnicianPayments() {
   // Modal State
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [callSearch, setCallSearch] = useState("");
-  const [modalTab, setModalTab] = useState("all");
+  const [modalTab, setModalTab] = useState("pending");
 
   // Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
@@ -194,19 +285,112 @@ export default function TechnicianPayments() {
     })();
   }, []);
 
+  const [loadingCalls, setLoadingCalls] = useState(false);
+
   const loadCalls = useCallback(async () => {
     try {
-      const res = await fetch("/api/tech/my-calls?tab=All%20Calls&pageSize=100", {
-        cache: "no-store",
+      setLoadingCalls(true);
+      const params = new URLSearchParams({
+        tab: "All Calls",
+        page: "1",
+        pageSize: "1000",
+        _t: Date.now().toString(),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success && Array.isArray(data.items)) {
-        setCalls(data.items);
-      }
+
+      const [r1, r2] = await Promise.all([
+        fetch(`/api/tech/my-calls?${params.toString()}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
+          .then((res) => res.json())
+          .catch(() => ({})),
+        fetch(`/api/tech/payment-check?_t=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
+          .then((res) => res.json())
+          .catch(() => ({})),
+      ]);
+
+      const apiCalls = Array.isArray(r1?.items) ? r1.items : [];
+      const paidCallIds = new Set(Array.isArray(r2?.paidCallIds) ? r2.paidCallIds.map(String) : []);
+      const paidKeySet = new Set(Array.isArray(r2?.paidKeys) ? r2.paidKeys : []);
+
+      const mapped = apiCalls.map((i) => {
+        const clientName = i.clientName ?? i.customerName ?? i.name ?? i.fullName ?? "";
+        const phone = i.phone ?? "";
+        const address = i.address ?? "";
+        const callIdStr = String(i._id || i.id || "");
+        const key = normalizeKey(clientName, phone, address);
+
+        // 🔹 Strict Rule: Jab tak payment submit nahi hoga tab tak Paid nahi hoga!
+        const isPaid = paidCallIds.has(callIdStr);
+        const paymentStatus = isPaid ? "Paid" : "Pending";
+
+        const createdAt = i.createdAt ? new Date(i.createdAt) : null;
+        return {
+          ...i,
+          _id: callIdStr,
+          clientName,
+          phone,
+          address,
+          type: i.type ?? "Service",
+          price: Number(i.price || 0),
+          status: i.status ?? "Pending",
+          createdAt: i.createdAt ?? "",
+          createdAtTime: createdAt ? createdAt.getTime() : 0,
+          paymentStatus,
+        };
+      });
+
+      setCalls(mapped);
     } catch (e) {
       console.error("Load calls error:", e);
+    } finally {
+      setLoadingCalls(false);
     }
   }, []);
+
+  // 🔹 Real-time auto-sync when technician closes a call and returns to Payments
+  useEffect(() => {
+    const handleSync = () => {
+      if (document.visibilityState === "visible") {
+        loadCalls();
+      }
+    };
+    window.addEventListener("focus", loadCalls);
+    document.addEventListener("visibilitychange", handleSync);
+    return () => {
+      window.removeEventListener("focus", loadCalls);
+      document.removeEventListener("visibilitychange", handleSync);
+    };
+  }, [loadCalls]);
+
+  // 🔹 Calculate counts for the 4 tabs exactly as requested
+  const counts = useMemo(() => {
+    let pending = 0;
+    let pendingCase = 0;
+    let paid = 0;
+
+    calls.forEach((c) => {
+      if (String(c.status || "").toLowerCase() === "canceled") return;
+      const cat = getCallCategory(c);
+      if (cat === "pending") pending++;
+      else if (cat === "pending_case") pendingCase++;
+      else if (cat === "paid") paid++;
+    });
+
+    const activeTotal = calls.filter(
+      (c) => String(c.status || "").toLowerCase() !== "canceled"
+    ).length;
+
+    return {
+      pending,
+      pendingCase,
+      paid,
+      all: activeTotal,
+    };
+  }, [calls]);
 
   const clearSig = useCallback(() => {
     sigRef.current?.clear();
@@ -215,12 +399,34 @@ export default function TechnicianPayments() {
 
   const openCallModal = useCallback(() => {
     setCallSearch("");
-    setModalTab("all");
+    setModalTab("pending"); // Open to Pending by default
     setCallModalOpen(true);
-  }, []);
+    loadCalls(); // ⚡ Immediately fetch fresh calls on modal open
+  }, [loadCalls]);
 
   const toggleSelectCall = useCallback((call) => {
     if (!call || !call._id) return;
+
+    const cat = getCallCategory(call);
+
+    // ⚠️ Rule: jo close na huva ho call vo yaha pending case me dikhega and payment submit nahi hoga
+    if (cat === "pending_case") {
+      toast.error("⚠️ Pehle My Calls me jakar call close karein! Call close hone ke baad hi payment submit ho sakti hai.", {
+        id: "call-not-closed",
+        duration: 3500,
+      });
+      vibrate([100, 50, 100]);
+      return;
+    }
+
+    if (cat === "paid") {
+      toast("ℹ️ This call is already marked as Paid.", {
+        id: "already-paid",
+        icon: "💳",
+      });
+      return;
+    }
+
     vibrate([20]);
 
     setSelectedCalls((prev) => {
@@ -258,26 +464,39 @@ export default function TechnicianPayments() {
     );
   }, []);
 
-  // Filtered Calls for Selection Modal
+  // Filtered Calls for Selection Modal: strictly matches user's rules + Latest sequence first
   const modalFilteredCalls = useMemo(() => {
     let list = calls.filter((c) => String(c.status || "").toLowerCase() !== "canceled");
 
     if (modalTab === "pending") {
-      list = list.filter((c) => {
-        const s = String(c.status || "").toLowerCase();
-        return s === "pending" || s === "in process";
-      });
+      // 1) jo call my call se close ho vo yaha pending me dikhega
+      list = list.filter((c) => getCallCategory(c) === "pending");
+    } else if (modalTab === "pending_case") {
+      // 2) jo close na huva ho call vo yaha pending case me dikhega
+      list = list.filter((c) => getCallCategory(c) === "pending_case");
+    } else if (modalTab === "paid") {
+      // 3) jo payment submit ho chuka ho vo paid me dikhega
+      list = list.filter((c) => getCallCategory(c) === "paid");
+    }
+    // "all" me sabhi
+
+    if (callSearch.trim()) {
+      const q = callSearch.toLowerCase().trim();
+      list = list.filter(
+        (c) =>
+          (c.clientName || "").toLowerCase().includes(q) ||
+          (c.phone || "").includes(q) ||
+          (c.address || "").toLowerCase().includes(q) ||
+          (c.type || "").toLowerCase().includes(q)
+      );
     }
 
-    if (!callSearch.trim()) return list;
-    const q = callSearch.toLowerCase().trim();
-    return list.filter(
-      (c) =>
-        (c.clientName || "").toLowerCase().includes(q) ||
-        (c.phone || "").includes(q) ||
-        (c.address || "").toLowerCase().includes(q) ||
-        (c.type || "").toLowerCase().includes(q)
-    );
+    // ⚡ Sequence: Latest call sabse upar dikhegi (newest first)
+    return [...list].sort((a, b) => {
+      const timeA = getCallSortTime(a, modalTab);
+      const timeB = getCallSortTime(b, modalTab);
+      return timeB - timeA;
+    });
   }, [calls, callSearch, modalTab]);
 
   // Aggregated Totals
@@ -319,6 +538,28 @@ export default function TechnicianPayments() {
       if (totalCombined <= 0) {
         toast.error("Total payment amount must be greater than ₹0");
         vibrate([80]);
+        return;
+      }
+
+      // ⚠️ Rule: Call close hone ke baad hi payment submit ho sakti hai
+      const unclosedCall = selectedCalls.find(
+        (c) => getCallCategory(c) === "pending_case"
+      );
+      if (unclosedCall) {
+        toast.error(
+          `"${unclosedCall.clientName || "Call"}" close nahi hui hai! Jab tak call close nahi hogi tab tak payment submit nahi ho sakti.`,
+          { duration: 4000 }
+        );
+        vibrate([100, 50, 100]);
+        return;
+      }
+
+      const alreadyPaidCall = selectedCalls.find(
+        (c) => getCallCategory(c) === "paid"
+      );
+      if (alreadyPaidCall) {
+        toast.error(`"${alreadyPaidCall.clientName || "Call"}" ka payment pehle hi submit ho chuka hai!`);
+        vibrate([100, 50, 100]);
         return;
       }
 
@@ -454,19 +695,19 @@ export default function TechnicianPayments() {
             {selectedCalls.length > 0 && (
               <div className="space-y-2.5 w-full min-w-0">
                 {selectedCalls.map((c) => {
-                  const closed = isClosedStatus(c.status);
+                  const cat = getCallCategory(c);
                   const badgeText =
-                    c.paymentStatus === "Paid"
+                    cat === "paid"
                       ? "Paid"
-                      : closed
-                      ? "Pending Payment"
+                      : cat === "pending"
+                      ? "Pending"
                       : "Pending Case";
                   const badgeClass =
-                    c.paymentStatus === "Paid"
+                    cat === "paid"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : closed
+                      : cat === "pending"
                       ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-rose-50 text-rose-700 border-rose-200";
+                      : "bg-purple-50 text-purple-700 border-purple-200";
 
                   const onlineNum = Number(c.onlineAmount || 0);
                   const cashNum = Number(c.cashAmount || 0);
@@ -774,39 +1015,79 @@ export default function TechnicianPayments() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  <div className="rounded-xl bg-slate-100 p-0.5 text-xs flex gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setModalTab("all")}
-                      className={`px-1.5 py-0.5 rounded-lg font-bold transition cursor-pointer text-[10px] xs:text-[11px] ${
-                        modalTab === "all"
-                          ? "bg-white text-blue-600 shadow-2xs"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      All ({calls.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModalTab("pending")}
-                      className={`px-1.5 py-0.5 rounded-lg font-bold transition cursor-pointer text-[10px] xs:text-[11px] ${
-                        modalTab === "pending"
-                          ? "bg-white text-amber-600 shadow-2xs"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      Pending
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={loadCalls}
+                    disabled={loadingCalls}
+                    title="Refresh calls list"
+                    className="h-7 w-7 rounded-xl hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-900 grid place-items-center transition cursor-pointer"
+                  >
+                    <span className={`text-xs ${loadingCalls ? "animate-spin" : ""}`}>🔄</span>
+                  </button>
 
                   <button
                     type="button"
                     onClick={() => setCallModalOpen(false)}
-                    className="text-gray-400 hover:text-black text-lg p-1 cursor-pointer"
+                    className="text-gray-400 hover:text-black text-lg p-1.5 cursor-pointer rounded-xl hover:bg-slate-100 transition"
                   >
                     ✕
                   </button>
                 </div>
+              </div>
+
+              {/* 🔹 4 Dedicated Tabs exactly as requested: Pending, Pending Case, Paid, All */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl mb-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setModalTab("pending")}
+                  className={`py-1.5 px-0.5 rounded-xl font-bold transition cursor-pointer text-[10px] xs:text-[11px] flex flex-col items-center leading-tight ${
+                    modalTab === "pending"
+                      ? "bg-white text-amber-700 shadow-2xs font-black ring-1 ring-amber-500/25"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="truncate">Pending</span>
+                  <span className="text-[9px] font-semibold opacity-80">({counts.pending})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab("pending_case")}
+                  className={`py-1.5 px-0.5 rounded-xl font-bold transition cursor-pointer text-[10px] xs:text-[11px] flex flex-col items-center leading-tight ${
+                    modalTab === "pending_case"
+                      ? "bg-white text-purple-700 shadow-2xs font-black ring-1 ring-purple-500/25"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="truncate">Pending Case</span>
+                  <span className="text-[9px] font-semibold opacity-80">({counts.pendingCase})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab("paid")}
+                  className={`py-1.5 px-0.5 rounded-xl font-bold transition cursor-pointer text-[10px] xs:text-[11px] flex flex-col items-center leading-tight ${
+                    modalTab === "paid"
+                      ? "bg-white text-emerald-700 shadow-2xs font-black ring-1 ring-emerald-500/25"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="truncate">Paid</span>
+                  <span className="text-[9px] font-semibold opacity-80">({counts.paid})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab("all")}
+                  className={`py-1.5 px-0.5 rounded-xl font-bold transition cursor-pointer text-[10px] xs:text-[11px] flex flex-col items-center leading-tight ${
+                    modalTab === "all"
+                      ? "bg-white text-blue-600 shadow-2xs font-black ring-1 ring-blue-500/25"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="truncate">All</span>
+                  <span className="text-[9px] font-semibold opacity-80">({counts.all})</span>
+                </button>
               </div>
 
               <div className="relative mb-2 w-full min-w-0">
@@ -830,14 +1111,33 @@ export default function TechnicianPayments() {
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 py-1 min-h-0">
                 {modalFilteredCalls.length === 0 && (
                   <div className="text-center text-slate-400 py-6 text-xs font-semibold space-y-1">
-                    <div className="text-xl">📋</div>
-                    <div>No calls found.</div>
+                    <div className="text-xl">
+                      {modalTab === "pending"
+                        ? "🎉"
+                        : modalTab === "pending_case"
+                        ? "📞"
+                        : modalTab === "paid"
+                        ? "💳"
+                        : "📋"}
+                    </div>
+                    <div>
+                      {modalTab === "pending"
+                        ? "No pending payments (all closed calls are settled)."
+                        : modalTab === "pending_case"
+                        ? "No pending cases (all calls are closed)."
+                        : modalTab === "paid"
+                        ? "No paid calls found."
+                        : "No calls found."}
+                    </div>
                   </div>
                 )}
 
                 {modalFilteredCalls.map((c) => {
                   const isSelected = selectedCalls.some((sc) => sc._id === c._id);
-                  const isPaid = c.paymentStatus === "Paid";
+                  const cat = getCallCategory(c);
+                  const isPaid = cat === "paid";
+                  const isPending = cat === "pending";
+                  const isPendingCase = cat === "pending_case";
 
                   return (
                     <div
@@ -846,6 +1146,10 @@ export default function TechnicianPayments() {
                       className={`w-full rounded-2xl p-2 xs:p-2.5 border transition-all select-none flex items-start justify-between gap-2 cursor-pointer shadow-2xs box-border overflow-hidden ${
                         isSelected
                           ? "bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20"
+                          : isPendingCase
+                          ? "bg-slate-50/60 border-slate-200/80 hover:bg-slate-50"
+                          : isPaid
+                          ? "bg-slate-50/40 border-slate-200/70"
                           : "bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80"
                       }`}
                     >
@@ -854,19 +1158,33 @@ export default function TechnicianPayments() {
                           className={`h-7 w-7 rounded-xl font-extrabold grid place-items-center text-[10px] shrink-0 shadow-2xs ${
                             isSelected
                               ? "bg-blue-600 text-white"
-                              : "bg-slate-900 text-white"
+                              : isPaid
+                              ? "bg-emerald-600 text-white"
+                              : isPending
+                              ? "bg-amber-500 text-white"
+                              : "bg-purple-600 text-white"
                           }`}
                         >
                           {isSelected ? "✓" : getInitials(c.clientName)}
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex items-center gap-1 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-extrabold text-xs text-slate-900 leading-tight truncate max-w-full">
                               {c.clientName || "Customer"}
                             </span>
                             {isPaid && (
-                              <span className="text-[8.5px] font-extrabold px-1.5 py-0.2 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">
                                 Paid
+                              </span>
+                            )}
+                            {isPending && (
+                              <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                                Pending
+                              </span>
+                            )}
+                            {isPendingCase && (
+                              <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200 shrink-0">
+                                Pending Case
                               </span>
                             )}
                           </div>
@@ -885,15 +1203,26 @@ export default function TechnicianPayments() {
                         <div className="text-xs xs:text-sm font-black text-slate-900">
                           ₹{c.price || 0}
                         </div>
-                        <span
-                          className={`text-[8.5px] font-extrabold px-1.5 py-0.2 rounded-full border whitespace-nowrap inline-block ${
-                            isSelected
-                              ? "bg-blue-600 text-white border-blue-600"
-                              : "bg-slate-100 text-slate-700 border-slate-200"
-                          }`}
-                        >
-                          {isSelected ? "Selected" : "Select"}
-                        </span>
+                        {isSelected ? (
+                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-600 text-white border-blue-600 shadow-2xs">
+                            Selected ✓
+                          </span>
+                        ) : isPending ? (
+                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
+                            Select
+                          </span>
+                        ) : isPaid ? (
+                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-emerald-50 text-emerald-700 border-emerald-200">
+                            Paid ✓
+                          </span>
+                        ) : (
+                          <span
+                            title="Call close hone ke baad hi payment submit ho sakti hai"
+                            className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
+                          >
+                            🔒 Call Open
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
