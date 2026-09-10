@@ -40,8 +40,15 @@ app.prepare().then(() => {
     })
   );
 
-  // Next handler for all other routes
-  server.all("*", (req, res) => handle(req, res));
+  // Next handler for all other routes (prevent stale UI caching on iOS & browsers)
+  server.all("*", (req, res) => {
+    if (!req.path.startsWith("/_next/static/") && !req.path.startsWith("/uploads/")) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+    }
+    return handle(req, res);
+  });
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, (err) => {

@@ -1,5 +1,6 @@
 // pages/_app.js
 import Head from "next/head";
+import Router from "next/router";
 import "../styles/globals.css";
 import { useEffect, useRef, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
@@ -8,6 +9,82 @@ import NotificationPermissionBanner from "../components/NotificationPermissionBa
 export default function MyApp({ Component, pageProps }) {
   const [token, setToken] = useState(null);
   const initedRef = useRef(false);
+
+  // 🔹 Anti-caching, iOS bfcache restoration fix & auto-version sync
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // 1. Force reload if Safari restored the page from frozen bfcache
+    const handlePageShow = (event) => {
+      if (event.persisted) {
+        console.log("📱 Safari bfcache detected. Reloading to ensure latest UI...");
+        window.location.reload();
+      }
+    };
+    window.addEventListener("pageshow", handlePageShow);
+
+    // 2. Catch Next.js chunk load errors and reload to new bundle assets
+    const handleChunkError = (err) => {
+      if (
+        err?.message?.includes("Loading chunk") ||
+        err?.message?.includes("Failed to load") ||
+        err?.name === "ChunkLoadError"
+      ) {
+        console.warn("⚠️ Chunk load mismatch, reloading to get latest build assets...");
+        window.location.reload();
+      }
+    };
+    Router.events.on("routeChangeError", handleChunkError);
+
+    // 3. Purge any stale CacheStorage
+    if ("caches" in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((key) => caches.delete(key).catch(() => {}));
+      }).catch(() => {});
+    }
+
+    // 4. Background check for newly deployed builds when user opens/returns to browser
+    let lastChecked = 0;
+    const checkVersion = async () => {
+      const now = Date.now();
+      if (now - lastChecked < 15000) return; // throttle 15s
+      lastChecked = now;
+      try {
+        const res = await fetch(`/api/app-version?t=${now}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const clientBuild = process.env.NEXT_PUBLIC_APP_BUILD_TIME;
+          if (
+            data?.buildTime &&
+            clientBuild &&
+            data.buildTime !== "dev" &&
+            clientBuild !== "dev" &&
+            data.buildTime !== clientBuild
+          ) {
+            console.log("🚀 Newer version available on server! Refreshing UI...");
+            window.location.reload();
+          }
+        }
+      } catch (e) {}
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkVersion();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    checkVersion();
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      Router.events.off("routeChangeError", handleChunkError);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const firebaseConfig = {
     apiKey: "AIzaSyCf6VNLkMzTOV51FFqWHrxB-KBr5Vu_xtM",
@@ -35,6 +112,9 @@ export default function MyApp({ Component, pageProps }) {
             swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
               scope: "/",
             });
+            if (swReg && typeof swReg.update === "function") {
+              swReg.update().catch(() => {});
+            }
             console.log("✅ Service Worker registered:", swReg.scope);
           } catch (err) {
             console.warn("❌ Service Worker registration failed:", err);
@@ -177,6 +257,11 @@ export default function MyApp({ Component, pageProps }) {
         />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        {/* Anti-caching headers for Mobile Safari / iPhone & Chrome */}
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
 
         {/* Brand icons */}
         <link rel="icon" href="/favicon.png" />

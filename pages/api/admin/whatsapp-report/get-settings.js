@@ -1,6 +1,10 @@
 // pages/api/admin/whatsapp-report/get-settings.js
 import { requireRole, getDb } from "../../../../lib/api-helpers.js";
 import { getDailyReportStats } from "../../../../lib/whatsapp-report-helper.js";
+import { initWhatsAppScheduler, getISTDateInfo } from "../../../../lib/whatsapp-scheduler.js";
+
+// Ensure background scheduler is active
+initWhatsAppScheduler();
 
 async function handler(req, res, user) {
   try {
@@ -60,9 +64,12 @@ async function handler(req, res, user) {
       .limit(15)
       .toArray();
 
+    const istInfo = getISTDateInfo();
+
     return res.json({
       ok: true,
       success: true,
+      serverIST: istInfo,
       settings: {
         senderPhone: settings.senderPhone || "8700994288",
         recipients: normalizedRecipients,

@@ -15,6 +15,11 @@ export default function Document() {
         <meta name="theme-color" content="#1e3a8a" />
         <meta name="description" content="Chimney Solutions CRM Progressive Web App" />
 
+        {/* ✅ Anti-cache meta tags (ensures latest UI on iPhone Safari & mobile browsers) */}
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+
         {/* ✅ Manifest & App Icons */}
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/favicon.png" />

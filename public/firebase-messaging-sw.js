@@ -81,3 +81,27 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+
+// ⚡ 3. Lifecycle events: skip waiting & clear any legacy caches
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      // Purge any stale cache storage
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            console.log("🧹 [SW] Evicting stale cache:", cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      }),
+    ])
+  );
+});
+
+

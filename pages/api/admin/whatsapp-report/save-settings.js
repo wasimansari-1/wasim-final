@@ -1,5 +1,9 @@
 // pages/api/admin/whatsapp-report/save-settings.js
 import { requireRole, getDb } from "../../../../lib/api-helpers.js";
+import { initWhatsAppScheduler } from "../../../../lib/whatsapp-scheduler.js";
+
+// Ensure scheduler is active
+initWhatsAppScheduler();
 
 async function handler(req, res, user) {
   if (req.method !== "POST") {
