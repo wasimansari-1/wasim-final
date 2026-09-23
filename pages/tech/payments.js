@@ -162,6 +162,7 @@ export default function TechnicianPayments() {
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [callSearch, setCallSearch] = useState("");
   const [modalTab, setModalTab] = useState("pending");
+  const [markingPaidId, setMarkingPaidId] = useState(null);
 
   // Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
@@ -324,7 +325,11 @@ export default function TechnicianPayments() {
         const key = normalizeKey(clientName, phone, address);
 
         // 🔹 Strict Rule: Jab tak payment submit nahi hoga tab tak Paid nahi hoga!
-        const isPaid = paidCallIds.has(callIdStr);
+        const isPaid =
+          paidCallIds.has(callIdStr) ||
+          i.paymentStatus === "Paid" ||
+          i.isPaid === true ||
+          String(i.paymentStatus || "").toLowerCase() === "paid";
         const paymentStatus = isPaid ? "Paid" : "Pending";
 
         const createdAt = i.createdAt ? new Date(i.createdAt) : null;
@@ -463,6 +468,43 @@ export default function TechnicianPayments() {
       })
     );
   }, []);
+
+  const handleMarkCallPaid = async (call) => {
+    if (!call || !call._id) return;
+    try {
+      setMarkingPaidId(call._id);
+      const res = await fetch("/api/tech/mark-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId: call._id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to mark call as paid");
+      }
+
+      // Optimistically update local calls
+      setCalls((prev) =>
+        prev.map((c) =>
+          c._id === call._id
+            ? { ...c, paymentStatus: "Paid", isPaid: true }
+            : c
+        )
+      );
+
+      // Deselect if selected
+      setSelectedCalls((prev) => prev.filter((c) => c._id !== call._id));
+
+      playSuccessSound();
+      vibrate([40, 30, 40]);
+      toast.success(`${call.clientName || "Call"} marked as Paid!`);
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.message || "Failed to mark as paid");
+    } finally {
+      setMarkingPaidId(null);
+    }
+  };
 
   // Filtered Calls for Selection Modal: strictly matches user's rules + Latest sequence first
   const modalFilteredCalls = useMemo(() => {
@@ -1199,30 +1241,50 @@ export default function TechnicianPayments() {
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0 space-y-0.5">
+                      <div className="text-right shrink-0 space-y-1">
                         <div className="text-xs xs:text-sm font-black text-slate-900">
                           ₹{c.price || 0}
                         </div>
-                        {isSelected ? (
-                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-600 text-white border-blue-600 shadow-2xs">
-                            Selected ✓
-                          </span>
-                        ) : isPending ? (
-                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
-                            Select
-                          </span>
-                        ) : isPaid ? (
-                          <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-emerald-50 text-emerald-700 border-emerald-200">
-                            Paid ✓
-                          </span>
-                        ) : (
-                          <span
-                            title="Call close hone ke baad hi payment submit ho sakti hai"
-                            className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
-                          >
-                            🔒 Call Open
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 justify-end">
+                          {isPending && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkCallPaid(c);
+                              }}
+                              disabled={markingPaidId === c._id}
+                              className="text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white active:scale-95 transition shadow-2xs flex items-center gap-0.5 cursor-pointer disabled:opacity-60"
+                              title="Database me direct Paid mark karein"
+                            >
+                              {markingPaidId === c._id ? (
+                                <span className="inline-block border-2 w-2 h-2 rounded-full border-emerald-600 border-t-transparent animate-spin" />
+                              ) : (
+                                <span>Paid</span>
+                              )}
+                            </button>
+                          )}
+                          {isSelected ? (
+                            <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-600 text-white border-blue-600 shadow-2xs">
+                              Selected ✓
+                            </span>
+                          ) : isPending ? (
+                            <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
+                              Select
+                            </span>
+                          ) : isPaid ? (
+                            <span className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Paid ✓
+                            </span>
+                          ) : (
+                            <span
+                              title="Call close hone ke baad hi payment submit ho sakti hai"
+                              className="text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap inline-block bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
+                            >
+                              🔒 Call Open
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

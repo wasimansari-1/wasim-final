@@ -56,6 +56,21 @@ async function handler(req, res, user) {
       }
     }
 
+    // Also include calls that were directly marked as Paid on forwarded_calls
+    const directPaidCalls = await forwardedColl
+      .find({
+        techId: { $in: techIds },
+        $or: [
+          { paymentStatus: "Paid" },
+          { paymentStatus: { $regex: /^paid$/i } },
+          { isPaid: true },
+        ],
+      })
+      .project({ _id: 1 })
+      .toArray();
+
+    directPaidCalls.forEach((f) => paidCallIdsSet.add(String(f._id)));
+
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     return res.status(200).json({
       success: true,
