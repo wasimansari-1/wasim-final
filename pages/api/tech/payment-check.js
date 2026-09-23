@@ -71,9 +71,13 @@ async function handler(req, res, user) {
 
     directPaidCalls.forEach((f) => paidCallIdsSet.add(String(f._id)));
 
+    const settingsDoc = await db.collection("system_settings").findOne({ key: "general_settings" });
+    const allowDirectMarkPaid = Boolean(settingsDoc?.allowDirectMarkPaid);
+
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     return res.status(200).json({
       success: true,
+      allowDirectMarkPaid,
       paidCallIds: Array.from(paidCallIdsSet),
       paidKeys: Array.from(paidKeySet),
     });

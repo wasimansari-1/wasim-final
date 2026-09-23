@@ -15,6 +15,13 @@ async function handler(req, res, user) {
     }
 
     const db = await getDb();
+
+    // Check if admin has enabled direct mark paid in settings
+    const settingsDoc = await db.collection("system_settings").findOne({ key: "general_settings" });
+    if (user.role !== "admin" && !settingsDoc?.allowDirectMarkPaid) {
+      return res.status(403).json({ success: false, error: "Direct Mark as Paid is disabled by Admin in Settings." });
+    }
+
     const forwardedColl = db.collection("forwarded_calls");
 
     const query = {};

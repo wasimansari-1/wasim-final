@@ -10,14 +10,29 @@ export default function MyApp({ Component, pageProps }) {
   const [token, setToken] = useState(null);
   const initedRef = useRef(false);
 
-  // 🔹 Clear any stale browser cache without reloading
+  // 🔹 Fix iPhone (iOS Safari) Stale UI & bfcache (Back-Forward Cache)
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // 1. When iPhone restores a frozen tab from memory/bfcache, force instant reload
+    const handlePageShow = (event) => {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+
+    // 2. Clear any stale CacheStorage
     if ("caches" in window) {
       caches.keys().then((keys) => {
         keys.forEach((key) => caches.delete(key).catch(() => {}));
       }).catch(() => {});
     }
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+    };
   }, []);
 
   const firebaseConfig = {

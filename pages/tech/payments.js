@@ -163,6 +163,7 @@ export default function TechnicianPayments() {
   const [callSearch, setCallSearch] = useState("");
   const [modalTab, setModalTab] = useState("pending");
   const [markingPaidId, setMarkingPaidId] = useState(null);
+  const [allowDirectMarkPaid, setAllowDirectMarkPaid] = useState(false);
 
   // Happy success overlay
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
@@ -316,6 +317,7 @@ export default function TechnicianPayments() {
       const apiCalls = Array.isArray(r1?.items) ? r1.items : [];
       const paidCallIds = new Set(Array.isArray(r2?.paidCallIds) ? r2.paidCallIds.map(String) : []);
       const paidKeySet = new Set(Array.isArray(r2?.paidKeys) ? r2.paidKeys : []);
+      setAllowDirectMarkPaid(Boolean(r2?.allowDirectMarkPaid));
 
       const mapped = apiCalls.map((i) => {
         const clientName = i.clientName ?? i.customerName ?? i.name ?? i.fullName ?? "";
@@ -1246,7 +1248,7 @@ export default function TechnicianPayments() {
                           ₹{c.price || 0}
                         </div>
                         <div className="flex items-center gap-1 justify-end">
-                          {isPending && (
+                          {allowDirectMarkPaid && isPending && (
                             <button
                               type="button"
                               onClick={(e) => {

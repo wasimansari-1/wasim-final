@@ -20,6 +20,7 @@ import {
   FiUserCheck,
   FiDatabase,
   FiCheck,
+  FiSettings,
 } from "react-icons/fi";
 import { FaWhatsapp, FaPalette } from "react-icons/fa";
 import CustomNotificationModal from "./admin/CustomNotificationModal";
@@ -280,6 +281,7 @@ export default function Header({ user = { role: "technician", name: "User", id: 
         { href: "/admin/backup", label: "Backup & Restore", icon: <FiDatabase /> },
         { href: "/admin/techs", label: "Technicians", icon: <FiUsers /> },
         { href: "/admin/create-tech", label: "+ Tech", icon: <FiPlus /> },
+        { href: "/admin/settings", label: "Settings", icon: <FiSettings /> },
       ],
 
       technician: [

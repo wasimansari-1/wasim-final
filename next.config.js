@@ -31,6 +31,18 @@ const nextConfig = {
           { key: "Expires", value: "0" },
         ],
       },
+      // 🔹 Prevent Next.js page JSON data chunks from being cached by iOS Safari
+      {
+        source: "/_next/data/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, max-age=0",
+          },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
+        ],
+      },
       // 🔹 Re-allow immutable long-term caching for hashed static assets
       {
         source: "/_next/static/:path*",

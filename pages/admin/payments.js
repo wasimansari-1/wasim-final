@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
+import Link from "next/link";
 import Header from "../../components/Header";
 import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -236,15 +237,23 @@ export default function Payments() {
                 {rangeLabel}
               </div>
             </div>
-            <div className="text-[11px] sm:text-xs text-slate-500">
-              Total Payments:{" "}
-              <span className="font-semibold text-slate-800">{totalPayments}</span>
-              {totalCalls > 0 && (
-                <>
-                  {" "}• Calls:{" "}
-                  <span className="font-semibold text-slate-800">{totalCalls}</span>
-                </>
-              )}
+            <div className="flex items-center gap-2">
+              <Link
+                href="/admin/settings"
+                className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80 transition"
+              >
+                ⚙️ Tech Paid Control
+              </Link>
+              <div className="text-[11px] sm:text-xs text-slate-500">
+                Total Payments:{" "}
+                <span className="font-semibold text-slate-800">{totalPayments}</span>
+                {totalCalls > 0 && (
+                  <>
+                    {" "}• Calls:{" "}
+                    <span className="font-semibold text-slate-800">{totalCalls}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
