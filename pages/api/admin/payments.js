@@ -3,11 +3,17 @@ import { ObjectId } from "mongodb";
 import Papa from "papaparse";
 import { getCache, setCache } from "../../../lib/redis.js";
 
+function escapeRegex(string = "") {
+  return String(string).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function handler(req, res, user) {
   try {
-    let { techId = "", range = "today", from = "", to = "", csv = "" } = req.query;
+    let { techId = "", range = "today", from = "", to = "", search = "", csv = "" } = req.query;
 
-    const cacheKey = `admin:payments:${techId}:${range}:${from}:${to}`;
+    const trimmedSearch = (search || "").trim();
+
+    const cacheKey = `admin:payments:${techId}:${trimmedSearch ? `search:${trimmedSearch}` : `${range}:${from}:${to}`}`;
     if (csv !== "1") {
       const cachedData = await getCache(cacheKey);
       if (cachedData) {
@@ -25,43 +31,62 @@ async function handler(req, res, user) {
       match.techId = new ObjectId(techId);
     }
 
-    // ---------------- DATE FILTERS ----------------
-    const now = new Date();
-    const start = new Date();
+    // ---------------- SEARCH OR DATE FILTERS ----------------
+    if (trimmedSearch) {
+      // If searching by customer name or phone, query lifetime payments in database
+      const escaped = escapeRegex(trimmedSearch);
+      const digitsOnly = trimmedSearch.replace(/\D/g, "");
 
-    if (range === "today") {
-      start.setHours(0, 0, 0, 0);
-      match.createdAt = { $gte: start };
-    }
+      const orConditions = [
+        { "calls.clientName": { $regex: escaped, $options: "i" } },
+        { "calls.phone": { $regex: escaped, $options: "i" } },
+        { receiver: { $regex: escaped, $options: "i" } },
+      ];
 
-    if (range === "7") {
-      match.createdAt = { $gte: new Date(now.getTime() - 7 * 24 * 3600 * 1000) };
-    }
+      if (digitsOnly.length > 0) {
+        orConditions.push({ "calls.phone": { $regex: digitsOnly, $options: "i" } });
+      }
 
-    if (range === "30") {
-      match.createdAt = { $gte: new Date(now.getTime() - 30 * 24 * 3600 * 1000) };
-    }
+      match.$or = orConditions;
+    } else {
+      // ---------------- DATE FILTERS (only when search is empty) ----------------
+      const now = new Date();
+      const start = new Date();
 
-    if (range === "month") {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      match.createdAt = { $gte: first };
-    }
+      if (range === "today") {
+        start.setHours(0, 0, 0, 0);
+        match.createdAt = { $gte: start };
+      }
 
-    if (range === "lastmonth") {
-      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const last = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      match.createdAt = { $gte: first, $lte: last };
-    }
+      if (range === "7") {
+        match.createdAt = { $gte: new Date(now.getTime() - 7 * 24 * 3600 * 1000) };
+      }
 
-    if (range === "year") {
-      const first = new Date(now.getFullYear(), 0, 1);
-      match.createdAt = { $gte: first };
-    }
+      if (range === "30") {
+        match.createdAt = { $gte: new Date(now.getTime() - 30 * 24 * 3600 * 1000) };
+      }
 
-    if (range === "custom" && (from || to)) {
-      match.createdAt = {};
-      if (from) match.createdAt.$gte = new Date(from + "T00:00:00");
-      if (to) match.createdAt.$lte = new Date(to + "T23:59:59");
+      if (range === "month") {
+        const first = new Date(now.getFullYear(), now.getMonth(), 1);
+        match.createdAt = { $gte: first };
+      }
+
+      if (range === "lastmonth") {
+        const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const last = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        match.createdAt = { $gte: first, $lte: last };
+      }
+
+      if (range === "year") {
+        const first = new Date(now.getFullYear(), 0, 1);
+        match.createdAt = { $gte: first };
+      }
+
+      if (range === "custom" && (from || to)) {
+        match.createdAt = {};
+        if (from) match.createdAt.$gte = new Date(from + "T00:00:00");
+        if (to) match.createdAt.$lte = new Date(to + "T23:59:59");
+      }
     }
 
     // ---------------- FETCH PAYMENTS ----------------

@@ -17,6 +17,7 @@ export default function Payments() {
   const [range, setRange] = useState("today");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [search, setSearch] = useState("");
 
   const [loading, setLoading] = useState(false);
   const abortRef = useRef(null);
@@ -30,6 +31,9 @@ export default function Payments() {
     d ? new Date(d).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) : "-";
 
   const rangeLabel = useMemo(() => {
+    if (search.trim()) {
+      return `Search: "${search.trim()}" (Lifetime)`;
+    }
     switch (range) {
       case "today":
         return "Today";
@@ -50,7 +54,7 @@ export default function Payments() {
       default:
         return "Filter";
     }
-  }, [range, from, to]);
+  }, [range, from, to, search]);
 
   // ---------------- AUTH + TECH LIST (PARALLEL) ----------------
   useEffect(() => {
@@ -85,13 +89,19 @@ export default function Payments() {
   }, []);
 
   // ---------------- LOAD PAYMENT DATA ----------------
-  async function load() {
+  async function load(customSearch = null) {
     try {
       if (abortRef.current) abortRef.current.abort();
       abortRef.current = new AbortController();
       setLoading(true);
 
-      const qs = new URLSearchParams({ techId, range, from, to });
+      const activeSearch = typeof customSearch === "string" ? customSearch : search;
+      const params = { techId, range, from, to };
+      if (activeSearch.trim()) {
+        params.search = activeSearch.trim();
+      }
+
+      const qs = new URLSearchParams(params);
       const r = await fetch("/api/admin/payments?" + qs.toString(), {
         signal: abortRef.current.signal,
       });
@@ -118,7 +128,11 @@ export default function Payments() {
   // ---------------- CSV EXPORT ----------------
   async function exportCSV() {
     try {
-      const qs = new URLSearchParams({ techId, range, from, to, csv: "1" });
+      const params = { techId, range, from, to, csv: "1" };
+      if (search.trim()) {
+        params.search = search.trim();
+      }
+      const qs = new URLSearchParams(params);
       const r = await fetch("/api/admin/payments?" + qs.toString());
       const d = await r.json();
 
@@ -234,8 +248,40 @@ export default function Payments() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 sm:gap-3 text-xs sm:text-sm">
-            <div className="flex flex-col gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-3 text-xs sm:text-sm">
+            <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-4">
+              <span className="text-[11px] text-slate-500 font-medium">Search Customer Name / Phone</span>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder="Search customer name or phone..."
+                  className="w-full border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white text-xs sm:text-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      load();
+                    }
+                  }}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      load("");
+                    }}
+                    className="absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1 lg:col-span-3">
               <span className="text-[11px] text-slate-500">Technician</span>
               <select
                 className="border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white"
@@ -251,12 +297,13 @@ export default function Payments() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 lg:col-span-2">
               <span className="text-[11px] text-slate-500">Date Range</span>
               <select
-                className="border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white"
+                className="border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 value={range}
                 onChange={(e) => setRange(e.target.value)}
+                disabled={Boolean(search.trim())}
               >
                 <option value="today">Today</option>
                 <option value="7">Last 7 Days</option>
@@ -269,9 +316,9 @@ export default function Payments() {
               </select>
             </div>
 
-            {range === "custom" && (
+            {range === "custom" && !search.trim() && (
               <>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 lg:col-span-2">
                   <span className="text-[11px] text-slate-500">From</span>
                   <input
                     type="date"
@@ -280,7 +327,7 @@ export default function Payments() {
                     onChange={(e) => setFrom(e.target.value)}
                   />
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 lg:col-span-2">
                   <span className="text-[11px] text-slate-500">To</span>
                   <input
                     type="date"
@@ -292,10 +339,10 @@ export default function Payments() {
               </>
             )}
 
-            <div className="flex items-end gap-2 col-span-2 md:col-span-2 justify-end">
+            <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3 justify-end">
               <button
-                onClick={load}
-                className="flex-1 md:flex-none inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition disabled:opacity-60"
+                onClick={() => load()}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-xs sm:text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition disabled:opacity-60 shadow-sm"
                 disabled={loading}
               >
                 {loading ? "Loading..." : "Apply Filter"}
@@ -312,7 +359,7 @@ export default function Payments() {
             {/* Mobile CSV button */}
             <button
               onClick={exportCSV}
-              className="sm:hidden col-span-2 inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 active:scale-95 transition"
+              className="sm:hidden col-span-1 sm:col-span-2 inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200 active:scale-95 transition"
             >
               Export CSV
             </button>
@@ -400,7 +447,7 @@ export default function Payments() {
                     const total = online + cash;
                     const callCount = p.calls?.length || 0;
                     const callClients = (p.calls || [])
-                      .map((c) => c.clientName)
+                      .map((c) => (c.clientName ? `${c.clientName}${c.phone ? ` (${c.phone})` : ""}` : c.phone || ""))
                       .filter(Boolean)
                       .join(", ");
 
@@ -470,6 +517,10 @@ export default function Payments() {
               const cash = Number(p.cashAmount || 0);
               const total = online + cash;
               const callCount = p.calls?.length || 0;
+              const callClients = (p.calls || [])
+                .map((c) => (c.clientName ? `${c.clientName}${c.phone ? ` (${c.phone})` : ""}` : c.phone || ""))
+                .filter(Boolean)
+                .join(", ");
 
               return (
                 <div
@@ -498,6 +549,11 @@ export default function Payments() {
                       </div>
                       <div>{p.mode}</div>
                       <div>{formatDateTime(p.createdAt)}</div>
+                      {callCount > 0 && (
+                        <div className="text-[10px] text-slate-500 truncate max-w-[160px]">
+                          {callClients}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-0.5 text-right">
                       <div>Online: <span className="font-semibold text-blue-600">₹{online}</span></div>
